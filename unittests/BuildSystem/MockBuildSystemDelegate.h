@@ -43,7 +43,8 @@ private:
 
   virtual void queueJobFinished(JobDescriptor*) override {}
 
-  virtual void processStarted(ProcessContext*, ProcessHandle handle) override {}
+  virtual void processStarted(ProcessContext*, ProcessHandle,
+                              llbuild_pid_t) override {}
 
   virtual void processHadError(ProcessContext*, ProcessHandle handle,
                                const Twine& message) override {}
@@ -200,6 +201,8 @@ public:
       messages.push_back(message);
     }
   }
+  
+  virtual void determinedRuleNeedsToRun(core::Rule* ruleNeedingToRun, core::Rule::RunReason reason, core::Rule* inputRule) { }
 };
 
 }

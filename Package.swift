@@ -117,29 +117,45 @@ let package = Package(
 
         .target(
             name: "llbuildBasicTests",
-            dependencies: ["llbuildBasic", "gtestlib"],
+            dependencies: ["llbuildBasic", "gmocklib"],
             path: "unittests/Basic",
+            cxxSettings: [
+                .headerSearchPath("../../utils/unittest/googlemock/include"),
+                .headerSearchPath("../../utils/unittest/googletest/include"),
+            ],
             linkerSettings: [
                 .linkedLibrary("dl", .when(platforms: [.linux])),
                 .linkedLibrary("pthread", .when(platforms: [.linux]))]),
         .target(
             name: "llbuildCoreTests",
-            dependencies: ["llbuildCore", "gtestlib"],
+            dependencies: ["llbuildCore", "gmocklib"],
             path: "unittests/Core",
+            cxxSettings: [
+                .headerSearchPath("../../utils/unittest/googlemock/include"),
+                .headerSearchPath("../../utils/unittest/googletest/include"),
+            ],
             linkerSettings: [
                 .linkedLibrary("dl", .when(platforms: [.linux])),
                 .linkedLibrary("pthread", .when(platforms: [.linux]))]),
         .target(
             name: "llbuildBuildSystemTests",
-            dependencies: ["llbuildBuildSystem", "gtestlib"],
+            dependencies: ["llbuildBuildSystem", "gmocklib"],
             path: "unittests/BuildSystem",
+            cxxSettings: [
+                .headerSearchPath("../../utils/unittest/googlemock/include"),
+                .headerSearchPath("../../utils/unittest/googletest/include"),
+            ],
             linkerSettings: [
                 .linkedLibrary("dl", .when(platforms: [.linux])),
                 .linkedLibrary("pthread", .when(platforms: [.linux]))]),
         .target(
             name: "llbuildNinjaTests",
-            dependencies: ["llbuildNinja", "gtestlib"],
+            dependencies: ["llbuildNinja", "gmocklib"],
             path: "unittests/Ninja",
+            cxxSettings: [
+                .headerSearchPath("../../utils/unittest/googlemock/include"),
+                .headerSearchPath("../../utils/unittest/googletest/include"),
+            ],
             linkerSettings: [
                 .linkedLibrary("dl", .when(platforms: [.linux])),
                 .linkedLibrary("pthread", .when(platforms: [.linux]))]),
@@ -170,13 +186,35 @@ let package = Package(
             exclude: [
                 "gtest-death-test.cc",
                 "gtest-filepath.cc",
+                "gtest-matchers.cc",
                 "gtest-port.cc",
                 "gtest-printers.cc",
                 "gtest-test-part.cc",
                 "gtest-typed-test.cc",
                 "gtest.cc",
+            ],
+            cxxSettings: [
+                .headerSearchPath(".."),
+                .headerSearchPath("../include"),
             ]),
-        
+
+        .target(
+            name: "gmocklib",
+            dependencies: ["gtestlib"],
+            path: "utils/unittest/googlemock/src",
+            exclude: [
+                "gmock-cardinalities.cc",
+                "gmock-internal-utils.cc",
+                "gmock-matchers.cc",
+                "gmock-spec-builders.cc",
+                "gmock.cc",
+            ],
+            cxxSettings: [
+                .headerSearchPath(".."),
+                .headerSearchPath("../include"),
+                .headerSearchPath("../../googletest/include"),
+            ]),
+
         // MARK: Ingested LLVM code.
         .target(
           name: "llvmDemangle",
@@ -199,18 +237,38 @@ let package = Package(
 #if os(Windows)
 
 do {
-    let llvmTargets : Set<String> = ["llvmSupport", "llvmDemangle", "llbuildBuildSystem", "llbuildBasic", "llbuildNinja"]
+    let llvmTargets: Set<String> = [
+        "libllbuild",
+        "llbuildCore",
+
+        "llvmDemangle",
+        "llvmSupport",
+
+        "llbuild",
+        "llbuildBasic",
+        "llbuildBuildSystem",
+        "llbuildCommands",
+        "llbuildNinja",
+
+        "llbuildBasicTests",
+        "llbuildBuildSystemTests",
+        "llbuildCoreTests",
+        "llbuildNinjaTests",
+
+        "swift-build-tool",
+    ]
+
     package.targets.filter({ llvmTargets.contains($0.name) }).forEach { target in
-        target.cxxSettings = [ .define("LLVM_ON_WIN32", .when(platforms: [.windows])) ]
+        target.cxxSettings = (target.cxxSettings ?? []) + [
+            .define("LLVM_ON_WIN32", .when(platforms: [.windows])),
+            .define("_CRT_SECURE_NO_WARNINGS", .when(platforms: [.windows])),
+            .define("_CRT_NONSTDC_NO_WARNINGS", .when(platforms: [.windows])),
+        ]
     }
 }
 
-package.targets.first{ $0.name == "libllbuild" }?.cxxSettings = [
-    .define("LLVM_ON_WIN32", .when(platforms: [.windows])),
-    // FIXME: we need to define `libllbuild_EXPORTS` to ensure that the
-    // symbols are exported from the DLL that is being built here until
-    // static linking is supported on Windows.
-    .define("libllbuild_EXPORTS", .when(platforms: [.windows])),
+package.targets.first { $0.name == "llbuildBasic" }?.linkerSettings = [
+    .linkedLibrary("ShLwApi", .when(platforms: [.windows]))
 ]
 
 #endif

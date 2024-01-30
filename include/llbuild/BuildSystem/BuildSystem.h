@@ -16,6 +16,7 @@
 #include "llbuild/Basic/Compiler.h"
 #include "llbuild/Basic/LLVM.h"
 #include "llbuild/Basic/Subprocess.h"
+#include "llbuild/Core/BuildEngine.h"
 
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
@@ -225,6 +226,15 @@ public:
   /// because multiple commands are producing it.
   virtual void cannotBuildNodeDueToMultipleProducers(Node* output,
                std::vector<Command*>) = 0;
+  
+  /// Called when it's been determined that a rule needs to run.
+  ///
+  ///  \param ruleNeedingToRun - The rule that needs to run.
+  ///
+  ///  \param reason - Describes why the rule needs to run. For example, because it has never run or because an input was rebuilt.
+  ///
+  ///  \param inputRule - If `reason` is `InputRebuilt`, the rule for the rebuilt input, else  `nullptr`.
+  virtual void determinedRuleNeedsToRun(core::Rule* ruleNeedingToRun, core::Rule::RunReason reason, core::Rule* inputRule) = 0;
 };
 
 /// The BuildSystem class is used to perform builds using the native build
@@ -289,6 +299,14 @@ public:
 
   /// Cancel the current build.
   void cancel();
+
+  /// Add cancellation delegate. If the same delegate object was added before
+  /// then the call is a noop.
+  void addCancellationDelegate(core::CancellationDelegate* del);
+
+  /// Remove cancellation delegate. If the delegate was not added or was
+  /// previously removed the call is a noop.
+  void removeCancellationDelegate(core::CancellationDelegate* del);
 
   static uint32_t getSchemaVersion();
   /// @}

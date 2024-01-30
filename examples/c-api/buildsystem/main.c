@@ -32,10 +32,12 @@ static void usage() {
   exit(0);
 }
 
+#if !defined(__linux__)
 static const char* basename(const char* path) {
   const char* result = strrchr(path, '/');
   return result ? result : path;
 }
+#endif
 
 #if defined(_WIN32)
 static wchar_t* convertToMultiByte(const char* s) {
@@ -72,14 +74,14 @@ static void fancy_command_provide_value(void* context,
                                         const llb_build_value* value,
                                         uintptr_t inputID) {}
 
-static bool
+static llb_buildsystem_command_result_t
 fancy_command_execute_command(void *context, llb_buildsystem_command_t* command,
                               llb_buildsystem_interface_t* bi,
                               llb_task_interface_t ti,
                               llb_buildsystem_queue_job_context_t* job) {
   printf("%s\n", __FUNCTION__);
   fflush(stdout);
-  return true;
+  return llb_buildsystem_command_result_succeeded;
 }
 
 // "Fancy" Tool Implementation
@@ -89,10 +91,13 @@ fancy_tool_create_command(void *context, const llb_data_t* name) {
   llb_buildsystem_external_command_delegate_t delegate;
   delegate.context = NULL;
   delegate.get_signature = NULL;
+  delegate.configure = NULL;
   delegate.start = fancy_command_start;
   delegate.provide_value = fancy_command_provide_value;
   delegate.execute_command = fancy_command_execute_command;
   delegate.execute_command_ex = NULL;
+  delegate.execute_command_detached = NULL;
+  delegate.cancel_detached_command = NULL;
   delegate.is_result_valid = NULL;
   return llb_buildsystem_external_command_create(name, delegate);
 }

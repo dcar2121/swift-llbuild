@@ -96,6 +96,18 @@ configureAttribute(const ConfigureContext& ctx, StringRef name,
     }
     alwaysOutOfDate = value == "true";
     return true;
+    
+  } else if (name == "repair-via-ownership-analysis") {
+    if (value == "true") {
+      repairViaOwnershipAnalysis = true;
+      return true;
+    } else if (value == "false") {
+      repairViaOwnershipAnalysis = false;
+      return true;
+    } else {
+      ctx.error("invalid value for attribute: '" + name + "'");
+      return false;
+    }
   } else {
     ctx.error("unexpected attribute: '" + name + "'");
     return false;
@@ -208,6 +220,7 @@ void ExternalCommand::start(BuildSystem& system,
   // Initialize the build state.
   skipValue = llvm::None;
   missingInputNodes.clear();
+  hasMissingDynamicInputs = false;
 
   // Request all of the inputs.
   unsigned id = 0;
@@ -234,7 +247,7 @@ void ExternalCommand::provideValue(BuildSystem& system,
   // Inform subclasses about the value
   provideValueExternalCommand(system, ti, inputID, value);
   
-  if (value.isSuccessfulCommand() || value.isFailedCommand() || value.isPropagatedFailureCommand()) {
+  if (value.isSuccessfulCommand() || value.isFailedCommand() || value.isPropagatedFailureCommand() || value.isCancelledCommand()) {
     // If the value is a successful command, it must probably be a value that was requested for a custom task, so
     // skip the input processing
     return;
@@ -292,9 +305,11 @@ void ExternalCommand::provideValue(BuildSystem& system,
   if (skipValueForInput.hasValue()) {
     skipValue = std::move(skipValueForInput);
     if (value.isMissingInput()) {
-      // FIXME: This should also account for dependencies that were added dynamically.
       if (inputs.size() > inputID) {
         missingInputNodes.insert(inputs[inputID]);
+      } else {
+        // FIXME: This should better track which dynamic input was missing. Right now, the higher level build system needs to reconstruct that information.
+        hasMissingDynamicInputs = true;
       }
     }
   } else {
@@ -365,9 +380,9 @@ void ExternalCommand::execute(BuildSystem& system,
   // If this command should be skipped, do nothing.
   if (skipValue.hasValue()) {
     // If this command had a failed input, treat it as having failed.
-    if (!missingInputNodes.empty()) {
+    if (!missingInputNodes.empty() || hasMissingDynamicInputs) {
       system.getDelegate().commandCannotBuildOutputDueToMissingInputs(this,
-                         outputs[0], missingInputNodes);
+                         outputs.empty() ? nullptr : outputs[0], missingInputNodes);
 
       // Report the command failure.
       system.getDelegate().hadCommandFailure();
@@ -377,6 +392,7 @@ void ExternalCommand::execute(BuildSystem& system,
     return;
   }
   assert(missingInputNodes.empty());
+  assert(!hasMissingDynamicInputs);
 
   // If it is legal to simply update the command, then see if we can do so.
   if (canUpdateIfNewer && hasPriorResult) {
@@ -398,6 +414,9 @@ void ExternalCommand::execute(BuildSystem& system,
       //
       // FIXME: Need to use the filesystem interfaces.
       auto parent = llvm::sys::path::parent_path(node->getName());
+      if (node->getName().endswith("/")) {
+        parent = llvm::sys::path::parent_path(parent);
+      }
       if (!parent.empty()) {
         (void) system.getFileSystem().createDirectories(parent);
       }

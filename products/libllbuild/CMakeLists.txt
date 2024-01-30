@@ -9,7 +9,7 @@ set(SOURCES
 
 add_llbuild_library(libllbuild
   ${SOURCES}
-  SHARED
+  STATIC
   OUTPUT_NAME llbuild)
 
 set_property(TARGET libllbuild PROPERTY MACOSX_RPATH ON)
@@ -21,8 +21,6 @@ target_link_libraries(libllbuild PRIVATE
   llbuildNinja
   llvmSupport
   SQLite::SQLite3)
-
-set_property(GLOBAL APPEND PROPERTY LLBuild_EXPORTS libllbuild)
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     set_target_properties(libllbuild PROPERTIES LINK_FLAGS "/INCREMENTAL:NO")
@@ -58,14 +56,6 @@ install(TARGETS libllbuild
   LIBRARY DESTINATION lib${LLBUILD_LIBDIR_SUFFIX}
   RUNTIME DESTINATION bin
   COMPONENT libllbuild)
-
-if(Swift IN_LIST LLBUILD_SUPPORT_BINDINGS)
-  if(NOT CMAKE_SYSTEM_NAME STREQUAL Windows)
-    install(TARGETS libllbuild
-      DESTINATION lib/swift/pm/llbuild
-      COMPONENT libllbuildSwift)
-  endif()
-endif()
 
 add_custom_target(install-libllbuild
                   DEPENDS libllbuild

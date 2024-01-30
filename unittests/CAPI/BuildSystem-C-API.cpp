@@ -68,7 +68,7 @@ static void depinfo_tester_command_provide_value(void* context,
                                                  const llb_build_value* value,
                                                  uintptr_t inputID) {}
   
-static bool
+static llb_buildsystem_command_result_t
 depinfo_tester_command_execute_command(void *context,
                                        llb_buildsystem_command_t* command,
                                        llb_buildsystem_interface_t* bi,
@@ -103,13 +103,13 @@ depinfo_tester_command_execute_command(void *context,
   // Read the absolute path of the indirect input from the direct input.
   std::string indirectInputPath = readFileContents(directInputPath);
   if (indirectInputPath.empty()) {
-    return false;
+    return llb_buildsystem_command_result_failed;
   }
   
   // Read the contents of the indirect input.
   std::string indirectContents = readFileContents(indirectInputPath);
   if (indirectContents.empty()) {
-    return false;
+    return llb_buildsystem_command_result_failed;
   }
   
   // Write the contents of the indirect input to the output.
@@ -134,7 +134,7 @@ depinfo_tester_command_execute_command(void *context,
 
   // Clean up.
   llb_free(desc);
-  return true;
+  return llb_buildsystem_command_result_succeeded;
 }
 
 static llb_buildsystem_command_t*
@@ -142,10 +142,13 @@ depinfo_tester_tool_create_command(void *context, const llb_data_t* name) {
   llb_buildsystem_external_command_delegate_t delegate;
   delegate.context = NULL;
   delegate.get_signature = NULL;
+  delegate.configure = NULL;
   delegate.start = depinfo_tester_command_start;
   delegate.provide_value = depinfo_tester_command_provide_value;
   delegate.execute_command = depinfo_tester_command_execute_command;
   delegate.execute_command_ex = NULL;
+  delegate.execute_command_detached = NULL;
+  delegate.cancel_detached_command = NULL;
   delegate.is_result_valid = NULL;
   return llb_buildsystem_external_command_create(name, delegate);
 }

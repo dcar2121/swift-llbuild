@@ -11,7 +11,6 @@
 			isa = PBXAggregateTarget;
 			buildConfigurationList = E178FCC41A1BF3270039F8B5 /* Build configuration list for PBXAggregateTarget "B&I" */;
 			buildPhases = (
-				BC92770E1E60449A0020E457 /* Install in CommandLineTools */,
 			);
 			dependencies = (
 				E178FCC61A1BF32F0039F8B5 /* PBXTargetDependency */,
@@ -93,6 +92,16 @@
 		40C9B48A23CFD69E0098712F /* libllbuildBasic.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E1A2242519F991B40059043E /* libllbuildBasic.a */; };
 		40C9B48B23CFD69E0098712F /* libllbuildCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E1A2243E19F997150059043E /* libllbuildCore.a */; };
 		40C9B49423CFD6B60098712F /* EvoEngineTest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 40C9B46223CFD6510098712F /* EvoEngineTest.cpp */; };
+		40D866F9284FF2420043271A /* libllvmSupport.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E1B838A21B52E7DE00DB876B /* libllvmSupport.a */; };
+		40D86705284FF2FC0043271A /* libgmock.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 40D86702284FF2C30043271A /* libgmock.a */; };
+		40D86706284FF3430043271A /* libgmock.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 40D86702284FF2C30043271A /* libgmock.a */; };
+		40D86707284FF34D0043271A /* libgmock.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 40D86702284FF2C30043271A /* libgmock.a */; };
+		40D86708284FF3CB0043271A /* libcurses.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = E15B6EC61B546A2C00643066 /* libcurses.tbd */; platformFilters = (bridgeos, ios, maccatalyst, macos, tvos, watchos, ); };
+		40D86709284FF3DF0043271A /* libgmock.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 40D86702284FF2C30043271A /* libgmock.a */; };
+		40D8670A284FF3EC0043271A /* libgmock.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 40D86702284FF2C30043271A /* libgmock.a */; };
+		40D8670B284FF3F70043271A /* libgmock.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 40D86702284FF2C30043271A /* libgmock.a */; };
+		40D8670D284FF4A40043271A /* gmock-all.cc in Frameworks */ = {isa = PBXBuildFile; fileRef = 40D8670C284FF4A40043271A /* gmock-all.cc */; };
+		40D8672E284FF4D20043271A /* gmock-all.cc in Sources */ = {isa = PBXBuildFile; fileRef = 40D8672B284FF4CB0043271A /* gmock-all.cc */; };
 		40EA264821651D2C00068954 /* ExecutionQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 40EA264721651D2C00068954 /* ExecutionQueue.cpp */; };
 		40EA264A21651D3F00068954 /* Subprocess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 40EA264921651D3F00068954 /* Subprocess.cpp */; };
 		40EA264C2165221C00068954 /* LaneBasedExecutionQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 40EA264B2165221C00068954 /* LaneBasedExecutionQueue.cpp */; };
@@ -182,7 +191,6 @@
 		E104FB001B6568E0005C68A0 /* BuildSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E104FAFF1B6568E0005C68A0 /* BuildSystem.cpp */; };
 		E1075ED71E4EA417007D52C6 /* BuildSystemTaskTests.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E1075ED61E4EA417007D52C6 /* BuildSystemTaskTests.cpp */; };
 		E10D5CDF19FEBF6A00211ED4 /* LitTests.m in Sources */ = {isa = PBXBuildFile; fileRef = E10D5CDE19FEBF6A00211ED4 /* LitTests.m */; };
-		E10D5CE419FEF3BD00211ED4 /* Python.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E10D5CE319FEF3BD00211ED4 /* Python.framework */; platformFilters = (macos, ); };
 		E10D5CE619FEF40100211ED4 /* LitTests.py in Resources */ = {isa = PBXBuildFile; fileRef = E10D5CE519FEF40100211ED4 /* LitTests.py */; };
 		E10FE0D71B7313D50059D086 /* DepsBuildEngineTest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E10FE0D61B7313D50059D086 /* DepsBuildEngineTest.cpp */; };
 		E111C153241B269D0086A92D /* llbuild.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1D191BE1B47232B000C4E95 /* llbuild.framework */; };
@@ -971,6 +979,7 @@
 
 /* Begin PBXFileReference section */
 		1420ADE3258C2BE100324AF0 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
+		144AE2D727B9C5CE003BA576 /* llbuild.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = llbuild.xctestplan; sourceTree = "<group>"; };
 		14600C9624F6D464006A15FA /* llbuild-defines.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "llbuild-defines.h"; sourceTree = "<group>"; };
 		147018862097909B0079261E /* ui */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ui; sourceTree = "<group>"; };
 		1484D1D620943D2100D3830F /* docs */ = {isa = PBXFileReference; lastKnownFileType = folder; path = docs; sourceTree = "<group>"; };
@@ -1004,14 +1013,14 @@
 		1484D2102094E8E700D3830F /* ptreetime.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = ptreetime.py; sourceTree = "<group>"; };
 		1484D2122094E90600D3830F /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		1484D2132094E90600D3830F /* llbuild-project-settings.el */ = {isa = PBXFileReference; lastKnownFileType = text; path = "llbuild-project-settings.el"; sourceTree = "<group>"; };
-		1484D2152094E99900D3830F /* Path.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Path.inc; sourceTree = "<group>"; };
-		1484D2162094E99900D3830F /* Host.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Host.inc; sourceTree = "<group>"; };
-		1484D2172094E99900D3830F /* Signals.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Signals.inc; sourceTree = "<group>"; };
-		1484D2192094E99900D3830F /* Process.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Process.inc; sourceTree = "<group>"; };
+		1484D2152094E99900D3830F /* Path.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Path.inc; sourceTree = "<group>"; };
+		1484D2162094E99900D3830F /* Host.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Host.inc; sourceTree = "<group>"; };
+		1484D2172094E99900D3830F /* Signals.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Signals.inc; sourceTree = "<group>"; };
+		1484D2192094E99900D3830F /* Process.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Process.inc; sourceTree = "<group>"; };
 		1484D21A2094E99900D3830F /* WindowsSupport.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WindowsSupport.h; sourceTree = "<group>"; };
-		1484D21B2094E99900D3830F /* Program.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Program.inc; sourceTree = "<group>"; };
-		1484D21C2094E99900D3830F /* Mutex.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Mutex.inc; sourceTree = "<group>"; };
-		1484D21D2094E99900D3830F /* Memory.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Memory.inc; sourceTree = "<group>"; };
+		1484D21B2094E99900D3830F /* Program.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Program.inc; sourceTree = "<group>"; };
+		1484D21C2094E99900D3830F /* Mutex.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Mutex.inc; sourceTree = "<group>"; };
+		1484D21D2094E99900D3830F /* Memory.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Memory.inc; sourceTree = "<group>"; };
 		1484D21E2094E9CE00D3830F /* LeanWindows.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = LeanWindows.h; path = ../../../lib/Basic/LeanWindows.h; sourceTree = "<group>"; };
 		2D0FB84B2395D8690088DAB4 /* BuildValue-C-API-Private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "BuildValue-C-API-Private.h"; sourceTree = "<group>"; };
 		2D86C6DF238D932B006E61FB /* Tool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Tool.h; sourceTree = "<group>"; };
@@ -1028,7 +1037,7 @@
 		406A05022162A20800EBA895 /* check-all */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "check-all"; sourceTree = "<group>"; };
 		406A05032162A5A200EBA895 /* build-and-test */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "build-and-test"; sourceTree = "<group>"; };
 		40942C05237F6A8900A9B341 /* KeyID.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyID.h; sourceTree = "<group>"; };
-		40942C06237F6A8900A9B341 /* AttributedKeyIDs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AttributedKeyIDs.h; sourceTree = "<group>"; };
+		40942C06237F6A8900A9B341 /* DependencyKeyIDs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DependencyKeyIDs.h; sourceTree = "<group>"; };
 		40B3C8FF20D3AEBC007C5847 /* CMakeLists.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = CMakeLists.txt; sourceTree = "<group>"; };
 		40B3C91A20D3AEC9007C5847 /* CAPITests */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = CAPITests; sourceTree = BUILT_PRODUCTS_DIR; };
 		40B3C91B20D3AF9B007C5847 /* C-API.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "C-API.cpp"; sourceTree = "<group>"; };
@@ -1042,6 +1051,34 @@
 		40C9B49123CFD69E0098712F /* EvoTests */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = EvoTests; sourceTree = BUILT_PRODUCTS_DIR; };
 		40C9B49523CFDC730098712F /* EvoEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EvoEngine.h; sourceTree = "<group>"; };
 		40D5A32823AD9C5A004B56EA /* Command.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Command.h; sourceTree = "<group>"; };
+		40D86702284FF2C30043271A /* libgmock.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libgmock.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		40D8670C284FF4A40043271A /* gmock-all.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = "gmock-all.cc"; path = "utils/unittest/googlemock/src/gmock-all.cc"; sourceTree = "<group>"; };
+		40D86711284FF4CB0043271A /* gmock-matchers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-matchers.h"; sourceTree = "<group>"; };
+		40D86712284FF4CB0043271A /* gmock-more-actions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-more-actions.h"; sourceTree = "<group>"; };
+		40D86713284FF4CB0043271A /* gmock-generated-actions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-generated-actions.h"; sourceTree = "<group>"; };
+		40D86714284FF4CB0043271A /* gmock-generated-matchers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-generated-matchers.h"; sourceTree = "<group>"; };
+		40D86716284FF4CB0043271A /* gmock-port.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-port.h"; sourceTree = "<group>"; };
+		40D86717284FF4CB0043271A /* gmock-internal-utils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-internal-utils.h"; sourceTree = "<group>"; };
+		40D86718284FF4CB0043271A /* gmock-pp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-pp.h"; sourceTree = "<group>"; };
+		40D8671A284FF4CB0043271A /* gmock-port.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-port.h"; sourceTree = "<group>"; };
+		40D8671B284FF4CB0043271A /* gmock-matchers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-matchers.h"; sourceTree = "<group>"; };
+		40D8671C284FF4CB0043271A /* gmock-generated-actions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-generated-actions.h"; sourceTree = "<group>"; };
+		40D8671D284FF4CB0043271A /* gmock-function-mocker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-function-mocker.h"; sourceTree = "<group>"; };
+		40D8671E284FF4CB0043271A /* gmock-more-matchers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-more-matchers.h"; sourceTree = "<group>"; };
+		40D8671F284FF4CB0043271A /* gmock-generated-function-mockers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-generated-function-mockers.h"; sourceTree = "<group>"; };
+		40D86720284FF4CB0043271A /* gmock-cardinalities.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-cardinalities.h"; sourceTree = "<group>"; };
+		40D86721284FF4CB0043271A /* gmock-spec-builders.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-spec-builders.h"; sourceTree = "<group>"; };
+		40D86722284FF4CB0043271A /* gmock-nice-strict.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-nice-strict.h"; sourceTree = "<group>"; };
+		40D86723284FF4CB0043271A /* gmock.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = gmock.h; sourceTree = "<group>"; };
+		40D86724284FF4CB0043271A /* gmock-actions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gmock-actions.h"; sourceTree = "<group>"; };
+		40D86725284FF4CB0043271A /* README.LLVM */ = {isa = PBXFileReference; lastKnownFileType = text; path = README.LLVM; sourceTree = "<group>"; };
+		40D86726284FF4CB0043271A /* LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE.txt; sourceTree = "<group>"; };
+		40D86728284FF4CB0043271A /* gmock-internal-utils.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "gmock-internal-utils.cc"; sourceTree = "<group>"; };
+		40D86729284FF4CB0043271A /* gmock-cardinalities.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "gmock-cardinalities.cc"; sourceTree = "<group>"; };
+		40D8672A284FF4CB0043271A /* gmock-matchers.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "gmock-matchers.cc"; sourceTree = "<group>"; };
+		40D8672B284FF4CB0043271A /* gmock-all.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "gmock-all.cc"; sourceTree = "<group>"; };
+		40D8672C284FF4CB0043271A /* gmock-spec-builders.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "gmock-spec-builders.cc"; sourceTree = "<group>"; };
+		40D8672D284FF4CB0043271A /* gmock.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = gmock.cc; sourceTree = "<group>"; };
 		40EA26452164253500068954 /* Subprocess.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Subprocess.h; sourceTree = "<group>"; };
 		40EA26462164289500068954 /* ExecutionQueue.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ExecutionQueue.h; sourceTree = "<group>"; };
 		40EA264721651D2C00068954 /* ExecutionQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ExecutionQueue.cpp; sourceTree = "<group>"; };
@@ -1092,7 +1129,7 @@
 		914D00F1220E3F7C009E16B2 /* NativeFormatting.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NativeFormatting.h; sourceTree = "<group>"; };
 		914D00F2220E3F7C009E16B2 /* Options.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Options.h; sourceTree = "<group>"; };
 		914D00F3220E3F7C009E16B2 /* ReverseIteration.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ReverseIteration.h; sourceTree = "<group>"; };
-		919DC55C220E3ECF0003F4B5 /* Threading.inc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.pascal; path = Threading.inc; sourceTree = "<group>"; };
+		919DC55C220E3ECF0003F4B5 /* Threading.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; fileEncoding = 4; path = Threading.inc; sourceTree = "<group>"; };
 		919DC55E220E3F480003F4B5 /* iterator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = iterator.h; sourceTree = "<group>"; };
 		919DC55F220E3F480003F4B5 /* APInt.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = APInt.h; sourceTree = "<group>"; };
 		919DC560220E3F480003F4B5 /* ilist_node_options.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ilist_node_options.h; sourceTree = "<group>"; };
@@ -1359,13 +1396,13 @@
 		E1B838C01B52E85400DB876B /* Threading.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Threading.cpp; sourceTree = "<group>"; };
 		E1B838C21B52E85400DB876B /* Twine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Twine.cpp; sourceTree = "<group>"; };
 		E1B838C31B52E85400DB876B /* Unicode.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Unicode.cpp; sourceTree = "<group>"; };
-		E1B838C51B52E85400DB876B /* Host.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Host.inc; sourceTree = "<group>"; };
-		E1B838C61B52E85400DB876B /* Memory.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Memory.inc; sourceTree = "<group>"; };
-		E1B838C71B52E85400DB876B /* Mutex.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Mutex.inc; sourceTree = "<group>"; };
-		E1B838C81B52E85400DB876B /* Path.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Path.inc; sourceTree = "<group>"; };
-		E1B838C91B52E85400DB876B /* Process.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Process.inc; sourceTree = "<group>"; };
-		E1B838CA1B52E85400DB876B /* Program.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Program.inc; sourceTree = "<group>"; };
-		E1B838CB1B52E85400DB876B /* Signals.inc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.pascal; path = Signals.inc; sourceTree = "<group>"; };
+		E1B838C51B52E85400DB876B /* Host.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Host.inc; sourceTree = "<group>"; };
+		E1B838C61B52E85400DB876B /* Memory.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Memory.inc; sourceTree = "<group>"; };
+		E1B838C71B52E85400DB876B /* Mutex.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Mutex.inc; sourceTree = "<group>"; };
+		E1B838C81B52E85400DB876B /* Path.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Path.inc; sourceTree = "<group>"; };
+		E1B838C91B52E85400DB876B /* Process.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Process.inc; sourceTree = "<group>"; };
+		E1B838CA1B52E85400DB876B /* Program.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Program.inc; sourceTree = "<group>"; };
+		E1B838CB1B52E85400DB876B /* Signals.inc */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = Signals.inc; sourceTree = "<group>"; };
 		E1B838CD1B52E85400DB876B /* Unix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Unix.h; sourceTree = "<group>"; };
 		E1B838CE1B52E85400DB876B /* Valgrind.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Valgrind.cpp; sourceTree = "<group>"; };
 		E1B838CF1B52E85400DB876B /* YAMLParser.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = YAMLParser.cpp; sourceTree = "<group>"; };
@@ -1464,6 +1501,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				40D8670B284FF3F70043271A /* libgmock.a in Frameworks */,
 				40FA6485224AC2FC00D0B79A /* libllbuildBasic.a in Frameworks */,
 				40FA6486224AC34400D0B79A /* libllvmSupport.a in Frameworks */,
 				40B3C92720D3B24D007C5847 /* libllbuild.dylib in Frameworks */,
@@ -1484,6 +1522,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				40D86705284FF2FC0043271A /* libgmock.a in Frameworks */,
 				40C9B48523CFD69E0098712F /* libcurses.tbd in Frameworks */,
 				40C9B48623CFD69E0098712F /* libsqlite3.tbd in Frameworks */,
 				40C9B48723CFD69E0098712F /* libllvmSupport.a in Frameworks */,
@@ -1492,6 +1531,14 @@
 				40C9B48A23CFD69E0098712F /* libllbuildBasic.a in Frameworks */,
 				40C9B48B23CFD69E0098712F /* libllbuildCore.a in Frameworks */,
 				408649DB23D1238C003063A2 /* libllbuildEvo.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40D866FD284FF2C30043271A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				40D8670D284FF4A40043271A /* gmock-all.cc in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1508,6 +1555,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				40D8670A284FF3EC0043271A /* libgmock.a in Frameworks */,
 				9D2107C61DFADDFA00BE26FF /* libcurses.tbd in Frameworks */,
 				C5740D0C1E03529300567DD8 /* libsqlite3.tbd in Frameworks */,
 				C5740D0B1E03528600567DD8 /* libllbuildBasic.a in Frameworks */,
@@ -1548,7 +1596,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E10D5CE419FEF3BD00211ED4 /* Python.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1565,6 +1612,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				40D86706284FF3430043271A /* libgmock.a in Frameworks */,
 				E13812A41C5370B3000092C0 /* libcurses.tbd in Frameworks */,
 				E147DF0D1BA81D330032D08E /* libgtest.a in Frameworks */,
 				E147DF0E1BA81D330032D08E /* libgtest_main.a in Frameworks */,
@@ -1648,6 +1696,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				40D86709284FF3DF0043271A /* libgmock.a in Frameworks */,
 				E14C2CF01BDAAD1E0033CA2A /* libcurses.tbd in Frameworks */,
 				E14C2CF11BDAAD210033CA2A /* libsqlite3.tbd in Frameworks */,
 				E14C2CEF1BDAAD070033CA2A /* libllvmSupport.a in Frameworks */,
@@ -1662,6 +1711,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				40D86708284FF3CB0043271A /* libcurses.tbd in Frameworks */,
+				40D86707284FF34D0043271A /* libgmock.a in Frameworks */,
+				40D866F9284FF2420043271A /* libllvmSupport.a in Frameworks */,
 				E1A2251719F99EC70059043E /* libgtest.a in Frameworks */,
 				E1A2251819F99EC80059043E /* libgtest_main.a in Frameworks */,
 				E1A2251919F99ECB0059043E /* libllbuildBasic.a in Frameworks */,
@@ -1859,6 +1911,79 @@
 				40C9B46223CFD6510098712F /* EvoEngineTest.cpp */,
 			);
 			path = Evo;
+			sourceTree = "<group>";
+		};
+		40D8670E284FF4CB0043271A /* googlemock */ = {
+			isa = PBXGroup;
+			children = (
+				40D8670F284FF4CB0043271A /* include */,
+				40D86725284FF4CB0043271A /* README.LLVM */,
+				40D86726284FF4CB0043271A /* LICENSE.txt */,
+				40D86727284FF4CB0043271A /* src */,
+			);
+			path = googlemock;
+			sourceTree = "<group>";
+		};
+		40D8670F284FF4CB0043271A /* include */ = {
+			isa = PBXGroup;
+			children = (
+				40D86710284FF4CB0043271A /* gmock */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		40D86710284FF4CB0043271A /* gmock */ = {
+			isa = PBXGroup;
+			children = (
+				40D86711284FF4CB0043271A /* gmock-matchers.h */,
+				40D86712284FF4CB0043271A /* gmock-more-actions.h */,
+				40D86713284FF4CB0043271A /* gmock-generated-actions.h */,
+				40D86714284FF4CB0043271A /* gmock-generated-matchers.h */,
+				40D86715284FF4CB0043271A /* internal */,
+				40D8671D284FF4CB0043271A /* gmock-function-mocker.h */,
+				40D8671E284FF4CB0043271A /* gmock-more-matchers.h */,
+				40D8671F284FF4CB0043271A /* gmock-generated-function-mockers.h */,
+				40D86720284FF4CB0043271A /* gmock-cardinalities.h */,
+				40D86721284FF4CB0043271A /* gmock-spec-builders.h */,
+				40D86722284FF4CB0043271A /* gmock-nice-strict.h */,
+				40D86723284FF4CB0043271A /* gmock.h */,
+				40D86724284FF4CB0043271A /* gmock-actions.h */,
+			);
+			path = gmock;
+			sourceTree = "<group>";
+		};
+		40D86715284FF4CB0043271A /* internal */ = {
+			isa = PBXGroup;
+			children = (
+				40D86716284FF4CB0043271A /* gmock-port.h */,
+				40D86717284FF4CB0043271A /* gmock-internal-utils.h */,
+				40D86718284FF4CB0043271A /* gmock-pp.h */,
+				40D86719284FF4CB0043271A /* custom */,
+			);
+			path = internal;
+			sourceTree = "<group>";
+		};
+		40D86719284FF4CB0043271A /* custom */ = {
+			isa = PBXGroup;
+			children = (
+				40D8671A284FF4CB0043271A /* gmock-port.h */,
+				40D8671B284FF4CB0043271A /* gmock-matchers.h */,
+				40D8671C284FF4CB0043271A /* gmock-generated-actions.h */,
+			);
+			path = custom;
+			sourceTree = "<group>";
+		};
+		40D86727284FF4CB0043271A /* src */ = {
+			isa = PBXGroup;
+			children = (
+				40D86728284FF4CB0043271A /* gmock-internal-utils.cc */,
+				40D86729284FF4CB0043271A /* gmock-cardinalities.cc */,
+				40D8672A284FF4CB0043271A /* gmock-matchers.cc */,
+				40D8672B284FF4CB0043271A /* gmock-all.cc */,
+				40D8672C284FF4CB0043271A /* gmock-spec-builders.cc */,
+				40D8672D284FF4CB0043271A /* gmock.cc */,
+			);
+			path = src;
 			sourceTree = "<group>";
 		};
 		40F638CC2051EDC800A1CFBE /* examples */ = {
@@ -2086,6 +2211,7 @@
 		E13B5E411A00395300EA0405 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				40D8670C284FF4A40043271A /* gmock-all.cc */,
 				1420ADE3258C2BE100324AF0 /* XCTest.framework */,
 				8CAE684F237B9EE300C82351 /* libncurses.tbd */,
 				E15B6EC61B546A2C00643066 /* libcurses.tbd */,
@@ -2098,6 +2224,7 @@
 		E14144901EBDA4A10046F282 /* Xcode */ = {
 			isa = PBXGroup;
 			children = (
+				144AE2D727B9C5CE003BA576 /* llbuild.xctestplan */,
 				E14144911EBDA4A10046F282 /* Configs */,
 			);
 			indentWidth = 4;
@@ -2198,6 +2325,7 @@
 				E111C158241B269D0086A92D /* llbuildTestSupport.framework */,
 				40C9B47023CFD6690098712F /* libllbuildEvo.a */,
 				40C9B49123CFD69E0098712F /* EvoTests */,
+				40D86702284FF2C30043271A /* libgmock.a */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -2350,7 +2478,7 @@
 		E1A2245719F997FE0059043E /* Headers */ = {
 			isa = PBXGroup;
 			children = (
-				40942C06237F6A8900A9B341 /* AttributedKeyIDs.h */,
+				40942C06237F6A8900A9B341 /* DependencyKeyIDs.h */,
 				40942C05237F6A8900A9B341 /* KeyID.h */,
 				E1E221041A0067EF00957481 /* BuildDB.h */,
 				E1A2245819F997FE0059043E /* BuildEngine.h */,
@@ -2395,6 +2523,7 @@
 		E1A2246B19F998C30059043E /* unittest */ = {
 			isa = PBXGroup;
 			children = (
+				40D8670E284FF4CB0043271A /* googlemock */,
 				E1A2246D19F998C30059043E /* UnitTestMain */,
 				E1A2247019F998C30059043E /* googletest */,
 				E1A2246C19F998C30059043E /* CMakeLists.txt */,
@@ -2906,6 +3035,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		40D866FE284FF2C30043271A /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B52912B9232BF0AD00FD3389 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
@@ -3075,6 +3211,23 @@
 			productName = CoreTests;
 			productReference = 40C9B49123CFD69E0098712F /* EvoTests */;
 			productType = "com.apple.product-type.tool";
+		};
+		40D866FA284FF2C30043271A /* gmock */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 40D866FF284FF2C30043271A /* Build configuration list for PBXNativeTarget "gmock" */;
+			buildPhases = (
+				40D866FB284FF2C30043271A /* Sources */,
+				40D866FD284FF2C30043271A /* Frameworks */,
+				40D866FE284FF2C30043271A /* Headers */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = gmock;
+			productName = gtest;
+			productReference = 40D86702284FF2C30043271A /* libgmock.a */;
+			productType = "com.apple.product-type.library.static";
 		};
 		8C561BFE23551C4A000D242D /* adjust-times */ = {
 			isa = PBXNativeTarget;
@@ -3540,9 +3693,10 @@
 		E1A223E919F98F1C0059043E /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				BuildIndependentTargetsInParallel = YES;
 				DefaultBuildSystemTypeForWorkspace = Latest;
 				LastSwiftUpdateCheck = 1120;
-				LastUpgradeCheck = 9900;
+				LastUpgradeCheck = 1400;
 				ORGANIZATIONNAME = "Apple Inc.";
 				TargetAttributes = {
 					8C561BFE23551C4A000D242D = {
@@ -3569,9 +3723,6 @@
 						ProvisioningStyle = Manual;
 					};
 					E147DEFE1BA81D330032D08E = {
-						ProvisioningStyle = Manual;
-					};
-					E1604C951BB9E01D001153A1 = {
 						ProvisioningStyle = Manual;
 					};
 					E178FCC11A1BF3270039F8B5 = {
@@ -3604,7 +3755,6 @@
 					};
 					E1A224C219F999B80059043E = {
 						CreatedOnToolsVersion = 6.3;
-						ProvisioningStyle = Manual;
 					};
 					E1A224DC19F99B0E0059043E = {
 						CreatedOnToolsVersion = 6.3;
@@ -3688,6 +3838,7 @@
 				E111C14A241B269D0086A92D /* llbuildTestSupport */,
 				B52912BD232BF0AD00FD3389 /* Analysis */,
 				B52912C5232BF0AE00FD3389 /* AnalysisTests */,
+				40D866FA284FF2C30043271A /* gmock */,
 			);
 		};
 /* End PBXProject section */
@@ -3786,23 +3937,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${SRCROOT}/utils/Xcode/create-target-link.sh\"\n";
-		};
-		BC92770E1E60449A0020E457 /* Install in CommandLineTools */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 8;
-			files = (
-			);
-			inputPaths = (
-				"$(BUILT_PRODUCTS_DIR)/llbuild.framework",
-			);
-			name = "Install in CommandLineTools";
-			outputPaths = (
-				"$(COMMANDLINETOOLS_FRAMEWORK_INSTALL_PATH)",
-			);
-			runOnlyForDeploymentPostprocessing = 1;
-			shellPath = /bin/sh;
-			shellScript = "# This script is used to install llbuild.framework in CommandLineTools.\n\nset -e\nif [ \"${SCRIPT_OUTPUT_FILE_0}\" != \"\" ]; then\n    mkdir -p \"$(dirname \"$SCRIPT_OUTPUT_FILE_0\")\"\n    rsync -a \"$SCRIPT_INPUT_FILE_0/\" \"$SCRIPT_OUTPUT_FILE_0\"\nfi\n";
-			showEnvVarsInLog = 0;
 		};
 		E147DF121BA81D330032D08E /* Create Target Link */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -3955,6 +4089,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				40C9B49423CFD6B60098712F /* EvoEngineTest.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		40D866FB284FF2C30043271A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				40D8672E284FF4D20043271A /* gmock-all.cc in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -4730,6 +4872,30 @@
 			};
 			name = Release;
 		};
+		40D86700284FF2C30043271A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				USER_HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/utils/unittest/googlemock/include",
+					"$(SRCROOT)/utils/unittest/googlemock",
+					"$(SRCROOT)/utils/unittest/googletest/include",
+				);
+			};
+			name = Debug;
+		};
+		40D86701284FF2C30043271A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				USER_HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/utils/unittest/googlemock/include",
+					"$(SRCROOT)/utils/unittest/googlemock",
+					"$(SRCROOT)/utils/unittest/googletest/include",
+				);
+			};
+			name = Release;
+		};
 		8C561C0323551C4A000D242D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -4746,7 +4912,6 @@
 					"DEBUG=1",
 					"$(inherited)",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -4764,7 +4929,6 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_STYLE = Automatic;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -4885,25 +5049,30 @@
 		E10D5CE019FEBF6A00211ED4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(DEVELOPER_FRAMEWORKS_DIR)",
+				"FRAMEWORK_SEARCH_PATHS[sdk=macosx*]" = (
 					"$(inherited)",
+					"$(DEVELOPER_FRAMEWORKS_DIR)",
 				);
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					"\"BUILT_PRODUCTS_DIR=\\\"$(BUILT_PRODUCTS_DIR)\\\"\"",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				"HEADER_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"$(DEVELOPER_FRAMEWORKS_DIR)/Python3.framework/Headers",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				OTHER_LDFLAGS = (
+				"OTHER_LDFLAGS[sdk=macosx*]" = (
 					"$(inherited)",
-					"-client_name",
-					pyobjc,
+					"$(OTHER_LDFLAGS_MACCATALYST_$(IS_MACCATALYST))",
 				);
+				OTHER_LDFLAGS_MACCATALYST_NO = "-framework Python3";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.apple.$(PRODUCT_NAME:rfc1034identifier)";
 			};
 			name = Debug;
@@ -4912,25 +5081,30 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(DEVELOPER_FRAMEWORKS_DIR)",
+				"FRAMEWORK_SEARCH_PATHS[sdk=macosx*]" = (
 					"$(inherited)",
+					"$(DEVELOPER_FRAMEWORKS_DIR)",
 				);
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					"\"BUILT_PRODUCTS_DIR=\\\"$(BUILT_PRODUCTS_DIR)\\\"\"",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				"HEADER_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"$(DEVELOPER_FRAMEWORKS_DIR)/Python3.framework/Headers",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				OTHER_LDFLAGS = (
+				"OTHER_LDFLAGS[sdk=macosx*]" = (
 					"$(inherited)",
-					"-client_name",
-					pyobjc,
+					"$(OTHER_LDFLAGS_MACCATALYST_$(IS_MACCATALYST))",
 				);
+				OTHER_LDFLAGS_MACCATALYST_NO = "-framework Python3";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.apple.$(PRODUCT_NAME:rfc1034identifier)";
 			};
 			name = Release;
@@ -4997,8 +5171,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "$(LLBUILD_CODE_SIGN_IDENTITY)";
+				DEVELOPMENT_TEAM = "";
 				INSTALL_PATH = "$(DT_TOOLCHAIN_INSTALL_DIR:standardizepath)/usr/bin";
-				SKIP_INSTALL = NO;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = "$(SKIP_INSTALL_CLI_TOOLS)";
 			};
 			name = Debug;
 		};
@@ -5006,8 +5182,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "$(LLBUILD_CODE_SIGN_IDENTITY)";
+				DEVELOPMENT_TEAM = "";
 				INSTALL_PATH = "$(DT_TOOLCHAIN_INSTALL_DIR:standardizepath)/usr/bin";
-				SKIP_INSTALL = NO;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = "$(SKIP_INSTALL_CLI_TOOLS)";
 			};
 			name = Release;
 		};
@@ -5101,7 +5279,7 @@
 				PROJECT_SOURCE_VERSION_ = "$(RC_ProjectSourceVersion)";
 				PROJECT_SOURCE_VERSION_empty = 9999.99;
 				SDKROOT = macosx;
-				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/include";
+				USER_HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/include";
 			};
 			name = Debug;
 		};
@@ -5158,7 +5336,7 @@
 				PROJECT_SOURCE_VERSION_empty = 9999.99;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
-				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/include";
+				USER_HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/include";
 			};
 			name = Release;
 		};
@@ -5224,9 +5402,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "$(LLBUILD_CODE_SIGN_IDENTITY)";
+				DEVELOPMENT_TEAM = "";
 				INSTALL_PATH = "$(DT_TOOLCHAIN_INSTALL_DIR:standardizepath)/usr/local/bin";
 				PRODUCT_NAME = llbuild;
-				SKIP_INSTALL = NO;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = "$(SKIP_INSTALL_CLI_TOOLS)";
 			};
 			name = Debug;
 		};
@@ -5234,9 +5414,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "$(LLBUILD_CODE_SIGN_IDENTITY)";
+				DEVELOPMENT_TEAM = "";
 				INSTALL_PATH = "$(DT_TOOLCHAIN_INSTALL_DIR:standardizepath)/usr/local/bin";
 				PRODUCT_NAME = llbuild;
-				SKIP_INSTALL = NO;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = "$(SKIP_INSTALL_CLI_TOOLS)";
 			};
 			name = Release;
 		};
@@ -5263,14 +5445,22 @@
 		E1A224E819F99C580059043E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/utils/unittest/googletest/include";
+				USER_HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/include",
+					"$(SRCROOT)/utils/unittest/googletest/include",
+					"$(SRCROOT)/utils/unittest/googlemock/include",
+				);
 			};
 			name = Debug;
 		};
 		E1A224E919F99C580059043E /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/utils/unittest/googletest/include";
+				USER_HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/include",
+					"$(SRCROOT)/utils/unittest/googletest/include",
+					"$(SRCROOT)/utils/unittest/googlemock/include",
+				);
 			};
 			name = Release;
 		};
@@ -5336,6 +5526,7 @@
 				INSTALL_PATH = "$(DT_TOOLCHAIN_INSTALL_DIR:standardizepath)/usr/local/lib";
 				PUBLIC_HEADERS_FOLDER_PATH = "$(DT_TOOLCHAIN_DIR)/usr/local/include/llbuild";
 				TAPI_FRAMEWORK_SEARCH_PATHS = "";
+				TAPI_HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/products/libllbuild/include/llbuild";
 			};
 			name = Debug;
 		};
@@ -5349,6 +5540,7 @@
 				INSTALL_PATH = "$(DT_TOOLCHAIN_INSTALL_DIR:standardizepath)/usr/local/lib";
 				PUBLIC_HEADERS_FOLDER_PATH = "$(DT_TOOLCHAIN_DIR)/usr/local/include/llbuild";
 				TAPI_FRAMEWORK_SEARCH_PATHS = "";
+				TAPI_HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/products/libllbuild/include/llbuild";
 			};
 			name = Release;
 		};
@@ -5391,6 +5583,7 @@
 					"$(DEVELOPER_FRAMEWORKS_DIR)",
 					"$(inherited)",
 				);
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					"\"SRCROOT=\\\"$(SRCROOT)\\\"\"",
@@ -5408,6 +5601,7 @@
 					"$(DEVELOPER_FRAMEWORKS_DIR)",
 					"$(inherited)",
 				);
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					"\"SRCROOT=\\\"$(SRCROOT)\\\"\"",
@@ -5427,9 +5621,9 @@
 				DYLIB_CURRENT_VERSION = "$(PROJECT_SOURCE_VERSION)";
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/products/libllbuild/include";
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/products/libllbuild/include";
 				INSTALL_PATH = "$(DT_SHARED_FRAMEWORKS_INSTALL_DIR:standardizepath)";
-				MODULEMAP_FILE = "$(SRCROOT)/products/llbuild-framework/llbuild-module.modulemap";
+				MODULEMAP_FILE = "$(PROJECT_DIR)/products/llbuild-framework/llbuild-module.modulemap";
 				PRODUCT_BUNDLE_IDENTIFIER = com.apple.dt.llbuild;
 				PRODUCT_NAME = llbuild;
 				SKIP_INSTALL = NO;
@@ -5447,9 +5641,9 @@
 				DYLIB_CURRENT_VERSION = "$(PROJECT_SOURCE_VERSION)";
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/products/libllbuild/include";
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/products/libllbuild/include";
 				INSTALL_PATH = "$(DT_SHARED_FRAMEWORKS_INSTALL_DIR:standardizepath)";
-				MODULEMAP_FILE = "$(SRCROOT)/products/llbuild-framework/llbuild-module.modulemap";
+				MODULEMAP_FILE = "$(PROJECT_DIR)/products/llbuild-framework/llbuild-module.modulemap";
 				PRODUCT_BUNDLE_IDENTIFIER = com.apple.dt.llbuild;
 				PRODUCT_NAME = llbuild;
 				SKIP_INSTALL = NO;
@@ -5484,6 +5678,15 @@
 			buildConfigurations = (
 				40C9B48F23CFD69E0098712F /* Debug */,
 				40C9B49023CFD69E0098712F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		40D866FF284FF2C30043271A /* Build configuration list for PBXNativeTarget "gmock" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				40D86700284FF2C30043271A /* Debug */,
+				40D86701284FF2C30043271A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

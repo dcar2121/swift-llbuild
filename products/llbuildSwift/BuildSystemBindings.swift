@@ -15,6 +15,8 @@ import ucrt
 import WinSDK
 #elseif canImport(Glibc)
 import Glibc
+#elseif canImport(Musl)
+import Musl
 #else
 #error("Missing libc or equivalent")
 #endif
@@ -29,6 +31,46 @@ import llbuild
 
 private func bytesFromData(_ data: llb_data_t) -> [UInt8] {
     return Array(UnsafeBufferPointer(start: data.data, count: Int(data.length)))
+}
+
+/// Delegate for spawning processes through `BuildSystemCommandInterface`.
+public protocol ProcessDelegate {
+    /// Called when the external process has started executing.
+    ///
+    /// - pid: The subprocess' identifier, can be -1 for failure reasons.
+    func processStarted(pid: llbuild_pid_t?)
+    
+    /// Called to report an error in the management of a command process.
+    ///
+    /// - error: The error message.
+    func processHadError(error: String)
+    
+    /// Called to report a command processes' (merged) standard output and error.
+    ///
+    /// - output: The process output.
+    func processHadOutput(output: [UInt8])
+    
+    /// Called when a command's job has finished executing an external process.
+    ///
+    /// - result: Whether the process suceeded, failed or was cancelled.
+    func processFinished(result: CommandExtendedResult)
+}
+
+private class ProcessDelegateWrapper {
+    private let delegate: ProcessDelegate
+    fileprivate var wrappedDelegate: llb_buildsystem_spawn_delegate_t!
+    
+    fileprivate init(delegate: ProcessDelegate) {
+        self.delegate = delegate
+        let wrappedDelegate = llb_buildsystem_spawn_delegate_t(
+            context: Unmanaged.passUnretained(self).toOpaque(),
+            process_started: { BuildSystem.toProcessDelegateWrapper($0!).delegate.processStarted(pid: $1) },
+            process_had_error: { BuildSystem.toProcessDelegateWrapper($0!).delegate.processHadError(error: stringFromData($1!.pointee)) },
+            process_had_output: { BuildSystem.toProcessDelegateWrapper($0!).delegate.processHadOutput(output: bytesFromData($1!.pointee)) },
+            process_finished: { BuildSystem.toProcessDelegateWrapper($0!).delegate.processFinished(result: CommandExtendedResult($1!)) }
+        )
+        self.wrappedDelegate = wrappedDelegate
+    }
 }
 
 /// Interface into the build system to modify the dependencies of a command.
@@ -49,6 +91,15 @@ public struct BuildSystemCommandInterface {
     public func commandNeedsInput(key: BuildKey, inputID: UInt) {
         llb_buildsystem_command_interface_task_needs_input(_taskInterface, key.internalBuildKey, inputID)
     }
+    
+    /// Request an input as a dependency just for the current build iteration.
+    /// Once the requesting command finishes, the dependency will be removed so that
+    /// incremental builds won't consider it for invalidation.
+    ///
+    /// NOTE: This method behaves like `request` for the current build.
+    public func commandsNeedsSingleUseInput(key: BuildKey, inputID: UInt) {
+        llb_buildsystem_command_interface_task_needs_single_use_input(_taskInterface, key.internalBuildKey, inputID)
+    }
 
     /// Marks a build key as a runtime found dependency for the command.
     public func commandDiscoveredDependency(key: BuildKey) {
@@ -58,12 +109,44 @@ public struct BuildSystemCommandInterface {
     func getFileInfo(_ path: String) throws -> BuildValueFileInfo {
         return llb_buildsystem_command_interface_get_file_info(_buildsystemInterface, path)
     }
+    
+    /// Spawns a process in the given context
+    ///
+    /// - commandLine: All command line arguments
+    /// - environment: The environment the process will be executed in
+    /// - workingDirectory: The path to the directory the process will use
+    /// - processDelegate: An instance that handles delegate callbacks about the execution of the process
+    public func spawn(_ jobContext: JobContext, commandLine: [String], environment: [String: String], workingDirectory: String, processDelegate: ProcessDelegate) -> Bool {
+        let keys = Array(environment.keys)
+        let values = Array(environment.values)        
+        let wrappedDelegate = ProcessDelegateWrapper(delegate: processDelegate)
+        
+        var workingDirData = copiedDataFromBytes([UInt8](workingDirectory.utf8))
+        
+        defer {
+            llb_data_destroy(&workingDirData)
+        }
+        
+        return commandLine.withCArrayOfOptionalStrings { commandLinePtr in
+            keys.withCArrayOfOptionalStrings { keysPtr in
+                values.withCArrayOfOptionalStrings { valuesPtr in
+                    llb_buildsystem_command_interface_spawn(_taskInterface, jobContext._context, commandLinePtr, Int32(commandLine.count), keysPtr, valuesPtr, Int32(environment.count), &workingDirData, &wrappedDelegate.wrappedDelegate)
+                }
+            }
+        }
+    }
+}
+
+/// Opaque object for the context of a job's execution
+public struct JobContext {
+    fileprivate let _context: OpaquePointer
+    
+    fileprivate init(_ context: OpaquePointer) {
+        _context = context
+    }
 }
 
 public protocol Tool: AnyObject {
-    @available(*, deprecated, message: "Use the overload that returns an Optional")
-    func createCommand(_ name: String) -> ExternalCommand
-
     /// Called to create a specific command instance of this tool.
     func createCommand(_ name: String) -> ExternalCommand?
 
@@ -72,11 +155,6 @@ public protocol Tool: AnyObject {
 }
 
 public extension Tool {
-    @available(*, deprecated, message: "Use the overload that returns an Optional")
-    func createCommand(_ name: String) -> ExternalCommand? {
-        return createCommand(name) as ExternalCommand
-    }
-
     // Default implementation to allow clients to avoid declaring this method if not required.
     func createCustomCommand(_ buildKey: BuildKey.CustomTask) -> ExternalCommand? {
         return nil
@@ -123,21 +201,32 @@ private final class ToolWrapper {
         self.commandWrappers.append(wrapper)
         var _delegate = llb_buildsystem_external_command_delegate_t()
         _delegate.context = Unmanaged.passUnretained(wrapper).toOpaque()
+        _delegate.configure = { BuildSystem.toCommandWrapper($0!).configure($1!, $2!, $3!, $4!) }
         _delegate.get_signature = { return BuildSystem.toCommandWrapper($0!).getSignature($1!, $2!) }
         _delegate.start = { return BuildSystem.toCommandWrapper($0!).start($1!, $2!, $3) }
         _delegate.provide_value = { return BuildSystem.toCommandWrapper($0!).provideValue($1!, $2!, $3, $4!, $5) }
-        _delegate.execute_command = { return BuildSystem.toCommandWrapper($0!).executeCommand($1!, $2!, $3, $4!) }
-        if let _ = command as? ProducesCustomBuildValue {
-            _delegate.execute_command_ex = {
-                var value: BuildValue = BuildSystem.toCommandWrapper($0!).executeCommand($1!, $2!, $3, $4!)
-                return BuildValue.move(&value)
+        let shouldExecuteDetached = (command as? ExternalDetachedCommand)?.shouldExecuteDetached == true
+        if shouldExecuteDetached {
+            _delegate.execute_command_detached = {
+              return BuildSystem.toCommandWrapper($0!).executeDetachedCommand($1!, $2!, $3, $4!, $5, $6!)
             }
-            _delegate.is_result_valid = {
-                return BuildSystem.toCommandWrapper($0!).isResultValid($1!, $2!)
-            }
+          _delegate.cancel_detached_command = {
+            return BuildSystem.toCommandWrapper($0!).cancelDetachedCommand($1!)
+          }
         } else {
-            _delegate.execute_command_ex = nil
-            _delegate.is_result_valid = nil
+            _delegate.execute_command = { return BuildSystem.toCommandWrapper($0!).executeCommand($1!, $2!, $3, $4!) }
+            if let _ = command as? ProducesCustomBuildValue {
+                _delegate.execute_command_ex = {
+                    var value: BuildValue = BuildSystem.toCommandWrapper($0!).executeCommand($1!, $2!, $3, $4!)
+                    return BuildValue.move(&value)
+                }
+                _delegate.is_result_valid = {
+                    return BuildSystem.toCommandWrapper($0!).isResultValid($1!, $2!)
+                }
+            } else {
+                _delegate.execute_command_ex = nil
+                _delegate.is_result_valid = nil
+            }
         }
 
         // Create the low-level command.
@@ -152,6 +241,15 @@ public protocol ExternalCommand: AnyObject {
     ///
     /// This is checked to determine if the command needs to rebuild versus the last time it was run.
     func getSignature(_ command: Command) -> [UInt8]
+    
+    /// Paths to files that contain discovered dependencies after command executed successfully for subsequent builds.
+    var dependencyPaths: [String] { get }
+    
+    /// Format of the dependency files listed in `dependencyPaths`.
+    var depedencyDataFormat: DependencyDataFormat { get }
+
+    /// Optional. The command's working directory. Used to resolve relative paths in dependency files.
+    var workingDirectory: String? { get }
 
     /// Called when the command is starting. Commands can request dynamic dependencies using the
     /// commandInterface object.
@@ -171,7 +269,7 @@ public protocol ExternalCommand: AnyObject {
 
     /// Called to execute the given command.
     ///
-    /// This method is deprecated in favor of the execute(Command, BuildSystemCommandInterface) method.
+    /// This method is deprecated in favor of the execute(Command, BuildSystemCommandInterface, JobContext) method.
     ///
     /// - command: A handle to the executing command.
     /// - returns: True on success.
@@ -179,20 +277,79 @@ public protocol ExternalCommand: AnyObject {
 
     /// Called to execute the given command.
     ///
+    /// This method is deprecated in favor of the execute(Command, BuildSystemCommandInterface, JobContext) method.
+    ///
     /// - command: A handle to the executing command.
     /// - commandInterface: A handle to the build system's command interface.
     /// - returns: True on success.
     func execute(_ command: Command, _ commandInterface: BuildSystemCommandInterface) -> Bool
+    
+    /// Called to execute the given command.
+    ///
+    /// This method is deprecated in favor of the execute(Command, BuildSystemCommandInterface, JobContext) -> CommandResult method.
+    ///
+    /// - command: A handle to the executing command.
+    /// - commandInterface: A handle to the build system's command interface.
+    /// - jobContext: A handle to opaque context of the executing job for spawning external processes.
+    /// - returns: True on success.
+    func execute(_ command: Command, _ commandInterface: BuildSystemCommandInterface, _ jobContext: JobContext) -> Bool
+    
+    /// Called to execute the given command.
+    ///
+    /// - command: A handle to the executing command.
+    /// - commandInterface: A handle to the build system's command interface.
+    /// - jobContext: A handle to opaque context of the executing job for spawning external processes.
+    /// - returns: command execution result.
+    func execute(_ command: Command, _ commandInterface: BuildSystemCommandInterface, _ jobContext: JobContext) -> CommandResult
+}
 
+public protocol ExternalDetachedCommand: AnyObject {
+    /// Whether the command should run outside the execution lanes.
+    /// If true the build system will call `executeDetached` and `cancelDetached`.
+    var shouldExecuteDetached: Bool { get }
+
+    /// Called to execute the command, without blocking the execution lanes.
+    /// The implementation should do the work asynchronously while returning as
+    /// soon as possible.
+    ///
+    /// - command: A handle to the executing command.
+    /// - commandInterface: A handle to the build system's command interface.
+    /// - jobContext: A handle to opaque context of the executing job for spawning external processes.
+    /// - resultFn: Callback for passing a result and optionally a `BuildValue`.
+    func executeDetached(
+        _ command: Command,
+        _ commandInterface: BuildSystemCommandInterface,
+        _ jobContext: JobContext,
+        _ resultFn: @escaping (CommandResult, BuildValue?) -> ()
+    )
+
+    /// Called to request the command to cancel.
+    /// The implementation should aim to return as soon as possible.
+    ///
+    /// - command: A handle to the executing command.
+    func cancelDetached(_ command: Command)
+}
+
+public extension ExternalDetachedCommand {
+    func cancelDetached(_ command: Command) {}
 }
 
 public protocol ProducesCustomBuildValue: AnyObject {
     /// Called to execute the given command that produces a custom build value.
     ///
+    /// This method is deprecated in favor of the execute(Command, BuildSystemCommandInterface, JobContext) method.
+    ///
     /// - command: A handle to the executing command.
     /// - commandInterface: A handle to the build system's command interface.
     /// - returns: Produced build value.
     func execute(_ command: Command, _ commandInterface: BuildSystemCommandInterface) -> BuildValue
+    
+    /// Called to execute the given command that produces a custom build value.
+    ///
+    /// - command: A handle to the executing command.
+    /// - commandInterface: A handle to the build system's command interface.
+    /// - returns: Produced build value.
+    func execute(_ command: Command, _ commandInterface: BuildSystemCommandInterface, _ jobContext: JobContext) -> BuildValue
 
     /// Called to check if the current result for this command remains valid.
     ///
@@ -201,11 +358,20 @@ public protocol ProducesCustomBuildValue: AnyObject {
     func isResultValid(_ command: Command, _ buildValue: BuildValue) -> Bool
 }
 
-// Extension to provide a default implementation of execute(_ Command, _ commandInterface) to allow clients to
-// migrate in a staggered manner.
+// Extension to provide a default implementation of execute(_ Command, _ commandInterface) and
+// execute(_ Command, _ commandInterface, _ jobContext) to allow clients to migrate in a staggered
+// manner.
 public extension ExternalCommand {
     func execute(_ command: Command, _ commandInterface: BuildSystemCommandInterface) -> Bool {
         return execute(command)
+    }
+    
+    func execute(_ command: Command, _ commandInterface: BuildSystemCommandInterface, _ jobContext: JobContext) -> Bool {
+        return execute(command, commandInterface)
+    }
+    
+    func execute(_ command: Command, _ commandInterface: BuildSystemCommandInterface, _ jobContext: JobContext) -> CommandResult {
+        return execute(command, commandInterface, jobContext) ? .succeeded : .failed
     }
 
     // If this implementation is invoked, it means that the client implementing ExternalCommand did not
@@ -217,8 +383,25 @@ public extension ExternalCommand {
 
 // Default implementations for these hooks since they're optional to the client.
 public extension ExternalCommand {
+    var depedencyDataFormat: DependencyDataFormat { .unused }
+    var dependencyPaths: [String] { [] }
+    var workingDirectory: String? { nil }
     func start(_ command: Command, _ commandInterface: BuildSystemCommandInterface) {}
     func provideValue(_ command: Command, _ commandInterface: BuildSystemCommandInterface, _ buildValue: BuildValue, _ inputID: UInt) {}
+}
+
+// Extension to provide a default implementation of execute(_ Command, _ commandInterface, _ jobContext)
+// to allow clients to migrate in a staggered manner.
+public extension ProducesCustomBuildValue {
+    // If this implementation is invoked, it means that the client implementing ProducesCustomBuildValue
+    // did not implement either of the execute methods, which is a programmer error.
+    func execute(_ command: Command, _ commandInterface: BuildSystemCommandInterface) -> BuildValue {
+        fatalError("This should never be called.")
+    }
+    
+    func execute(_ command: Command, _ commandInterface: BuildSystemCommandInterface, _ jobContext: JobContext) -> BuildValue {
+        execute(command, commandInterface)
+    }
 }
 
 // FIXME: The terminology is really confusing here, we have ExternalCommand which is divorced from the actual internal command implementation of the same name.
@@ -229,6 +412,54 @@ private final class CommandWrapper {
     init(command: ExternalCommand) {
         self.command = command
         self._command = Command(handle: nil)
+    }
+    
+    func configure(_ context: OpaquePointer, _ single: @convention(c) (OpaquePointer?, llb_data_t, llb_data_t) -> Void, _ collection: @convention(c) (OpaquePointer?, llb_data_t, UnsafeMutablePointer<llb_data_t>?, size_t) -> Void, _ map: @convention(c) (OpaquePointer?, llb_data_t, UnsafeMutablePointer<llb_data_t>?, UnsafeMutablePointer<llb_data_t>?, size_t) -> Void) {
+        if !command.dependencyPaths.isEmpty {
+            var formatKey = copiedDataFromBytes(Array("deps-style".utf8))
+            var value: llb_data_t
+            switch command.depedencyDataFormat {
+            case .makefile:
+                value = copiedDataFromBytes(Array("makefile".utf8))
+            case .dependencyinfo:
+                value = copiedDataFromBytes(Array("dependency-info".utf8))
+            case .makefileIgnoringSubsequentOutputs:
+                value = copiedDataFromBytes(Array("makefile-ignoring-subsequent-outputs".utf8))
+            default:
+                value = copiedDataFromBytes(Array("unusued".utf8))
+            }
+            defer {
+                llb_data_destroy(&formatKey)
+                llb_data_destroy(&value)
+            }
+            single(context, formatKey, value)
+            
+            var paths: [llb_data_t] = []
+            for path in command.dependencyPaths {
+                paths.append(copiedDataFromBytes(Array(path.utf8)))
+            }
+            var depsKey = copiedDataFromBytes(Array("deps".utf8))
+            defer {
+                llb_data_destroy(&depsKey)
+                for index in paths.indices {
+                    llb_data_destroy(&paths[index])
+                }
+            }
+            if paths.count == 1 {
+                single(context, depsKey, paths[0])
+            } else {            
+                collection(context, depsKey, &paths, paths.count)
+            }
+        }
+        if let workingDirectory = command.workingDirectory {
+            var workingDirectoryKey = copiedDataFromBytes(Array("working-directory".utf8))
+            var workingDirectoryValue = copiedDataFromBytes(Array(workingDirectory.utf8))
+            defer {
+                llb_data_destroy(&workingDirectoryKey)
+                llb_data_destroy(&workingDirectoryValue)
+            }
+            single(context, workingDirectoryKey, workingDirectoryValue)
+        }
     }
 
     func getSignature(_: OpaquePointer, _ data: UnsafeMutablePointer<llb_data_t>) {
@@ -250,14 +481,37 @@ private final class CommandWrapper {
         return command.provideValue(_command, commandInterface, buildValue, inputID)
     }
 
-    func executeCommand(_: OpaquePointer, _ buildsystemInterface: OpaquePointer, _ taskInterface: llb_task_interface_t, _ jobContext: OpaquePointer) -> Bool {
+    func executeCommand(_: OpaquePointer, _ buildsystemInterface: OpaquePointer, _ taskInterface: llb_task_interface_t, _ jobContext: OpaquePointer) -> CommandResult {
         let commandInterface = BuildSystemCommandInterface(buildsystemInterface, taskInterface)
-        return command.execute(_command, commandInterface)
+        return command.execute(_command, commandInterface, JobContext(jobContext))
+    }
+
+    func executeDetachedCommand(
+        _: OpaquePointer,
+        _ buildsystemInterface: OpaquePointer,
+        _ taskInterface: llb_task_interface_t,
+        _ jobContext: OpaquePointer,
+        _ resultContext: UnsafeMutableRawPointer?,
+        _ resultFn: @escaping (_ resultContext: UnsafeMutableRawPointer?, CommandResult, OpaquePointer?) -> ()
+    ) {
+        let commandInterface = BuildSystemCommandInterface(buildsystemInterface, taskInterface)
+        func resultReceiver(_ result: CommandResult, value: BuildValue?) {
+            if var value {
+                resultFn(resultContext, result, BuildValue.move(&value))
+            } else {
+                resultFn(resultContext, result, nil)
+            }
+        }
+        return (command as! ExternalDetachedCommand).executeDetached(_command, commandInterface, JobContext(jobContext), resultReceiver)
+    }
+
+    func cancelDetachedCommand(_: OpaquePointer) {
+        return (command as! ExternalDetachedCommand).cancelDetached(_command)
     }
 
     func executeCommand(_: OpaquePointer, _ buildsystemInterface: OpaquePointer, _ taskInterface: llb_task_interface_t, _ jobContext: OpaquePointer) -> BuildValue {
         let commandInterface = BuildSystemCommandInterface(buildsystemInterface, taskInterface)
-        return (command as! ProducesCustomBuildValue).execute(_command, commandInterface)
+        return (command as! ProducesCustomBuildValue).execute(_command, commandInterface, JobContext(jobContext))
     }
 
     func isResultValid(_: OpaquePointer, _ value: OpaquePointer) -> Bool {
@@ -612,6 +866,10 @@ public protocol BuildSystemDelegate {
     /// missing inputs.
     func commandCannotBuildOutputDueToMissingInputs(_ command: Command, output: BuildKey, inputs: [BuildKey])
 
+    /// Called by the build system to report a command could not build due to
+    /// missing inputs.
+    func commandCannotBuildOutputDueToMissingInputs(_ command: Command, output: BuildKey?, inputs: [BuildKey])
+
     /// Called by the build system when a node has multiple commands that are producing it.
     /// The delegate can return one of the commands for the build system to use or return `nil`
     /// for the build system to treat the node as invalid.
@@ -656,6 +914,15 @@ public protocol BuildSystemDelegate {
     /// - parameter exitStatus: The raw exit status of the process.
     func commandProcessFinished(_ command: Command, process: ProcessHandle, result: CommandExtendedResult)
 
+    /// Called when it's been determined that a rule needs to run.
+    ///
+    ///  - parameter ruleNeedingToRun: The rule that needs to run.
+    ///
+    ///  - parameter reason: Describes why the rule needs to run. For example, because it has never run or because an input was rebuilt.
+    ///
+    ///  - parameter inputRule: If `reason` is `InputRebuilt`, the rule for the rebuilt input, else  `nil`.
+    func determinedRuleNeedsToRun(_ rule: BuildKey, reason: RuleRunReason, inputRule: BuildKey?)
+
     /// Called when a cycle is detected by the build engine and it cannot make
     /// forward progress.
     func cycleDetected(rules: [BuildKey])
@@ -687,6 +954,16 @@ extension BuildSystemDelegate {
     public func chooseCommandFromMultipleProducers(output: BuildKey, commands: [Command]) -> Command? {
         // default implementation for ABI compatibility with older clients
         return nil
+    }
+
+    public func determinedRuleNeedsToRun(_ rule: BuildKey, reason: RuleRunReason, inputRule: BuildKey?) {
+        // default implementation for compatibility with older clients
+    }
+
+    public func commandCannotBuildOutputDueToMissingInputs(_ command: Command, output: BuildKey?, inputs: [BuildKey]) {
+        if let output = output {
+            commandCannotBuildOutputDueToMissingInputs(command, output: output, inputs: inputs)
+        }
     }
 }
 
@@ -818,9 +1095,10 @@ public final class BuildSystem {
             _delegate.command_had_note = { BuildSystem.toSystem($0!).commandHadNote(Command(handle: $1), $2!) }
             _delegate.command_had_warning = { BuildSystem.toSystem($0!).commandHadWarning(Command(handle: $1), $2!) }
             _delegate.command_cannot_build_output_due_to_missing_inputs = {
-                let inputsPtr = $3!
-                let inputs = (0..<Int($4)).map { BuildKey.construct(key: inputsPtr[$0]!) }
-                BuildSystem.toSystem($0!).commandCannotBuildOutputDueToMissingInputs(Command(handle: $1), BuildKey.construct(key: $2!.pointee!), inputs)
+                let inputsPtr = $3
+                let inputs = (0..<Int($4)).map { BuildKey.construct(key: inputsPtr![$0]!) }
+                let output = $2?.pointee.map { BuildKey.construct(key: $0) }
+                BuildSystem.toSystem($0!).commandCannotBuildOutputDueToMissingInputs(Command(handle: $1), output, inputs)
             }
             _delegate.choose_command_from_multiple_producers = {
                 let commandsPtr = $2!
@@ -837,6 +1115,9 @@ public final class BuildSystem {
             _delegate.command_process_had_error = { BuildSystem.toSystem($0!).commandProcessHadError(Command(handle: $1), ProcessHandle($2!), $3!) }
             _delegate.command_process_had_output = { BuildSystem.toSystem($0!).commandProcessHadOutput(Command(handle: $1), ProcessHandle($2!), $3!) }
             _delegate.command_process_finished = { BuildSystem.toSystem($0!).commandProcessFinished(Command(handle: $1), ProcessHandle($2!), CommandExtendedResult($3!)) }
+            _delegate.determined_rule_needs_to_run = {
+                BuildSystem.toSystem($0!).determinedRuleNeedsToRun(BuildKey.construct(key: $1!), reason: $2, inputRule: $3.map { BuildKey.construct(key: $0) })
+            }
             _delegate.cycle_detected = {
                 var rules = [BuildKey]()
                 UnsafeBufferPointer(start: $1, count: Int($2)).forEach {
@@ -915,6 +1196,11 @@ public final class BuildSystem {
     static fileprivate func toCommandWrapper(_ context: UnsafeMutableRawPointer) -> CommandWrapper {
         return Unmanaged<CommandWrapper>.fromOpaque(UnsafeRawPointer(context)).takeUnretainedValue()
     }
+    
+    /// Helper function for getting the process delegate wrapper from the delegate context.
+    static fileprivate func toProcessDelegateWrapper(_ context: UnsafeMutableRawPointer) -> ProcessDelegateWrapper {
+        return Unmanaged<ProcessDelegateWrapper>.fromOpaque(UnsafeRawPointer(context)).takeUnretainedValue()
+    }
 
     private func fsGetFileContents(_ path: String, _ data: UnsafeMutablePointer<llb_data_t>) -> Bool {
         let fs = delegate.fs!
@@ -954,7 +1240,7 @@ public final class BuildSystem {
         #elseif os(Windows)
         info.pointee.mod_time.seconds = UInt64(s.st_mtime)
         info.pointee.mod_time.nanoseconds = 0
-        #elseif canImport(Glibc)
+        #elseif canImport(Glibc) || canImport(Musl)
         info.pointee.mod_time.seconds = UInt64(s.st_mtim.tv_sec)
         info.pointee.mod_time.nanoseconds = UInt64(s.st_mtim.tv_nsec)
         #else
@@ -1041,7 +1327,7 @@ public final class BuildSystem {
         delegate.commandHadWarning(command, message: stringFromData(data.pointee))
     }
 
-    private func commandCannotBuildOutputDueToMissingInputs(_ command: Command, _ output: BuildKey, _ inputs: [BuildKey]) {
+    private func commandCannotBuildOutputDueToMissingInputs(_ command: Command, _ output: BuildKey?, _ inputs: [BuildKey]) {
         delegate.commandCannotBuildOutputDueToMissingInputs(command, output: output, inputs: inputs)
     }
 
@@ -1067,6 +1353,10 @@ public final class BuildSystem {
 
     private func commandProcessFinished(_ command: Command, _ process: ProcessHandle, _ result: CommandExtendedResult) {
         delegate.commandProcessFinished(command, process: process, result: result)
+    }
+
+    private func determinedRuleNeedsToRun(_ rule: BuildKey, reason: RuleRunReason, inputRule: BuildKey?) {
+        delegate.determinedRuleNeedsToRun(rule, reason: reason, inputRule: inputRule)
     }
 
     private func cycleDetected(_ rules: [BuildKey]) {

@@ -202,7 +202,7 @@ std::string BuildSystemInvocation::formatDetectedCycle(const std::vector<core::R
         break;
       case BuildKey::Kind::DirectoryTreeStructureSignature:
         os << "directory-tree-structure-signature '"
-        << key.getDirectoryPath() << "'";
+        << key.getFilteredDirectoryPath() << "'";
         break;
       case BuildKey::Kind::Node:
         os << "node '" << key.getNodeName() << "'";
@@ -251,7 +251,8 @@ public:
   }
 
   virtual void processStarted(ProcessContext* command,
-                              ProcessHandle handle) override {
+                              ProcessHandle handle,
+                              llbuild_pid_t pid) override {
     static_cast<BuildSystemFrontendDelegate*>(&getSystem().getDelegate())->
       commandProcessStarted(
           reinterpret_cast<Command*>(command),
@@ -739,6 +740,8 @@ void BuildSystemFrontendDelegate::commandJobFinished(Command*) {
 void BuildSystemFrontendDelegate::commandProcessStarted(Command*,
                                                         ProcessHandle) {
 }
+
+void BuildSystemFrontendDelegate::determinedRuleNeedsToRun(core::Rule* ruleNeedingToRun, core::Rule::RunReason reason, core::Rule* inputRule) {}
 
 bool BuildSystemFrontendDelegate::
 shouldResolveCycle(const std::vector<core::Rule*>& items,

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15.1)
+cmake_minimum_required(VERSION 3.19)
 
 # Get the SDK path for OSX.
 # Please the position of this snippet is important, as
@@ -15,6 +15,7 @@ endif()
 project(llbuild LANGUAGES CXX)
 
 option(BUILD_SHARED_LIBS "Build Shared Libraries" ON)
+option(BUILD_TESTING "Build tests" ON)
 option(LLBUILD_ENABLE_ASSERTIONS "enable assertions in release mode" NO)
 
 # Configure the default set of bindings to build.
@@ -40,18 +41,13 @@ if(CMAKE_CONFIGURATION_TYPES AND NOT "${CMAKE_CFG_INTDIR}" STREQUAL ".")
 else()
   set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
   set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-  # CMAKE<3.16 had a bug where the import library would be placed next to the
-  # binary under all conditions.  This breaks the layout expectations, which
-  # would break linking.  As a workaround, place the binaries in the lib
-  # directory.
-  if(CMAKE_VERSION VERSION_LESS 3.16 AND CMAKE_SYSTEM_NAME STREQUAL Windows)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-  else()
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-  endif()
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 
-set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+if(CMAKE_SYSTEM_NAME STREQUAL Android)
+  set(CMAKE_HAVE_LIBC_PTHREAD TRUE)
+endif()
+set(THREADS_PREFER_PTHREAD_FLAG FALSE)
 find_package(Threads REQUIRED)
 
 find_package(SQLite3 REQUIRED)
@@ -89,16 +85,18 @@ set(LLBUILD_LIBDIR_SUFFIX "${LIB_SUFFIX}" CACHE STRING "Set default library fold
 ###
 # Support Tools
 
-find_package(Lit)
-find_package(FileCheck)
-find_package(PythonInterp)
+if(BUILD_TESTING)
+  find_package(Lit)
+  find_package(FileCheck)
+  find_package(PythonInterp)
+endif()
 
 ###
 # Setup compiler and project build settings
 
 # Find includes in the source directory.
 include_directories(BEFORE
-  ${CMAKE_SOURCE_DIR}/include)
+  ${PROJECT_SOURCE_DIR}/include)
 
 # Xcode: Use libc++ and c++14 using proper build settings.
 if (XCODE)
@@ -209,10 +207,12 @@ endif()
 
 # Process CMakeLists files for our subdirectories.
 add_subdirectory(lib)
-add_subdirectory(perftests)
 add_subdirectory(products)
-add_subdirectory(tests)
-add_subdirectory(unittests)
-add_subdirectory(utils/unittest)
-add_subdirectory(utils/adjust-times)
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+  add_subdirectory(perftests)
+  add_subdirectory(unittests)
+  add_subdirectory(utils/unittest)
+  add_subdirectory(utils/adjust-times)
+endif()
 add_subdirectory(cmake/modules)

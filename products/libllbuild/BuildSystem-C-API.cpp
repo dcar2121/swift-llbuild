@@ -23,6 +23,7 @@
 #include "llbuild/BuildSystem/Tool.h"
 #include "llbuild/Core/BuildEngine.h"
 #include "llbuild/Core/DependencyInfoParser.h"
+#include "llbuild/Core/MakefileDepsParser.h"
 
 #include "BuildKey-C-API-Private.h"
 #include "BuildValue-C-API-Private.h"
@@ -31,10 +32,13 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Path.h"
 
 #include <atomic>
 #include <cassert>
+#include <future>
 #include <memory>
+#include <utility>
 
 using namespace llbuild;
 using namespace llbuild::basic;
@@ -97,6 +101,10 @@ public:
     return cAPIDelegate.fs_remove(cAPIDelegate.context, path.c_str());
   }
 
+  virtual basic::FileChecksum getFileChecksum(const std::string& path) override {
+    return localFileSystem->getFileChecksum(path);
+  }
+
   virtual basic::FileInfo getFileInfo(const std::string& path) override {
     if (!cAPIDelegate.fs_get_file_info) {
       return localFileSystem->getFileInfo(path);
@@ -149,25 +157,25 @@ public:
   }
 };
   
+llb_buildsystem_command_result_t get_command_result(ProcessStatus commandResult) {
+  switch (commandResult) {
+    case ProcessStatus::Succeeded:
+      return llb_buildsystem_command_result_succeeded;
+    case ProcessStatus::Cancelled:
+      return llb_buildsystem_command_result_cancelled;
+    case ProcessStatus::Failed:
+      return llb_buildsystem_command_result_failed;
+    case ProcessStatus::Skipped:
+      return llb_buildsystem_command_result_skipped;
+    default:
+      assert(0 && "unknown command result");
+      break;
+  }
+  return llb_buildsystem_command_result_failed;
+}
+
 class CAPIBuildSystemFrontendDelegate : public BuildSystemFrontendDelegate {
   llb_buildsystem_delegate_t cAPIDelegate;
-
-  llb_buildsystem_command_result_t get_command_result(ProcessStatus commandResult) {
-    switch (commandResult) {
-      case ProcessStatus::Succeeded:
-        return llb_buildsystem_command_result_succeeded;
-      case ProcessStatus::Cancelled:
-        return llb_buildsystem_command_result_cancelled;
-      case ProcessStatus::Failed:
-        return llb_buildsystem_command_result_failed;
-      case ProcessStatus::Skipped:
-        return llb_buildsystem_command_result_skipped;
-      default:
-        assert(0 && "unknown command result");
-        break;
-    }
-    return llb_buildsystem_command_result_failed;
-  }
 
 public:
   CAPIBuildSystemFrontendDelegate(llvm::SourceMgr& sourceMgr,
@@ -305,8 +313,11 @@ public:
   virtual void commandCannotBuildOutputDueToMissingInputs(Command* command,
                Node* outputNode, SmallPtrSet<Node*, 1> inputNodes) override {
     if (cAPIDelegate.command_cannot_build_output_due_to_missing_inputs) {
-      auto str = outputNode->getName().str();
-      auto output = new CAPIBuildKey(BuildKey::makeNode(str));
+      CAPIBuildKey *output = nullptr;
+      if (outputNode) {
+        auto str = outputNode->getName().str();
+        output = new CAPIBuildKey(BuildKey::makeNode(str));
+      }
 
       CAPINodesVector inputs(inputNodes);
 
@@ -340,7 +351,7 @@ public:
       }
     }
 
-    llb_build_key_t** data() { return (llb_build_key_t **)&keys[0]; }
+    llb_build_key_t** data() { return (llb_build_key_t **)keys.data(); }
     uint64_t count() { return keys.size(); }
   };
 
@@ -467,6 +478,42 @@ public:
     uint64_t count() { return rules.size(); }
   };
 
+  static llb_rule_run_reason_t
+  convertRunReason(core::Rule::RunReason reason) {
+    switch (reason) {
+      case core::Rule::RunReason::NeverBuilt:
+        return llb_rule_run_reason_never_built;
+      case core::Rule::RunReason::SignatureChanged:
+        return llb_rule_run_reason_signature_changed;
+      case core::Rule::RunReason::InvalidValue:
+        return llb_rule_run_reason_invalid_value;
+      case core::Rule::RunReason::InputRebuilt:
+        return llb_rule_run_reason_input_rebuilt;
+      case core::Rule::RunReason::Forced:
+        return llb_rule_run_reason_forced;
+    }
+    assert(0 && "unknown reason");
+    return llb_rule_run_reason_invalid_value;
+  }
+
+  virtual void determinedRuleNeedsToRun(core::Rule* ruleNeedingToRun, core::Rule::RunReason reason, core::Rule* inputRule) override {
+    if (cAPIDelegate.determined_rule_needs_to_run) {
+      auto key = BuildKey::fromData(ruleNeedingToRun->key);
+      auto needsToRun = (llb_build_key_t *)new CAPIBuildKey(key);
+      llb_build_key_t * input;
+      if (inputRule) {
+        auto inputKey = BuildKey::fromData(inputRule->key);
+        input = (llb_build_key_t *)new CAPIBuildKey(inputKey);
+      } else {
+        input = nullptr;
+      }
+      cAPIDelegate.determined_rule_needs_to_run(cAPIDelegate.context, needsToRun, convertRunReason(reason), input);
+      llb_build_key_destroy(needsToRun);
+      if (input) {
+        llb_build_key_destroy(input);
+      }
+    }
+  }
 
   virtual void cycleDetected(const std::vector<core::Rule*>& items) override {
     CAPIRulesVector rules(items);
@@ -664,14 +711,31 @@ class CAPIExternalCommand : public ExternalCommand {
   // that the delegates are const and we just carry the context pointer around.
   llb_buildsystem_external_command_delegate_t cAPIDelegate;
   
-  /// The path to the dependency output file, if used.
-  std::string depsPath;
+  /// The paths to the dependency output files, if used.
+  SmallVector<std::string, 1> depsPaths{};
 
-  bool processDiscoveredDependencies(BuildSystem& system,
-                                     core::TaskInterface ti,
-                                     QueueJobContext* context) {
+  /// The working directory used to resolve relative paths in dependency files.
+  std::string workingDirectory;
+  
+  /// Format of the dependencies in `depsPaths`.
+  /// We default to `dependencyinfo` for legacy behavior since not all tasks specify the format.
+  llb_buildsystem_dependency_data_format_t depsFormat =
+          llb_buildsystem_dependency_data_format_dependencyinfo;
+
+  bool processDependencyInfoDiscoveredDependencies(BuildSystem& system,
+                                                   core::TaskInterface ti,
+                                                   QueueJobContext* context,
+                                                   std::string depsPath) {
     // Read the dependencies file.
-    auto input = system.getFileSystem().getFileContents(depsPath);
+    std::unique_ptr<llvm::MemoryBuffer> input;
+    if (llvm::sys::path::is_absolute(depsPath)) {
+      input = system.getFileSystem().getFileContents(depsPath);
+    } else {
+      SmallString<PATH_MAX> absPath = StringRef(workingDirectory);
+      llvm::sys::path::append(absPath, depsPath);
+      llvm::sys::fs::make_absolute(absPath);
+      input = system.getFileSystem().getFileContents(StringRef(absPath));
+    }
     if (!input) {
       system.getDelegate().commandHadError(this, "unable to open dependencies file (" + depsPath + ")");
       return false;
@@ -716,17 +780,161 @@ class CAPIExternalCommand : public ExternalCommand {
     core::DependencyInfoParser(input->getBuffer(), actions).parse();
     return actions.numErrors == 0;
   }
-
-  virtual bool configureAttribute(const ConfigureContext& ctx, StringRef name,
-                                  StringRef value) override {
-    if (name == "deps") {
-      depsPath = value;
+  
+  bool processMakefileDiscoveredDependencies(BuildSystem& system,
+                                             core::TaskInterface ti,
+                                             QueueJobContext* context,
+                                             std::string depsPath,
+                                             bool ignoreSubsequentOutputs) {
+    // Read the dependencies file.
+    std::unique_ptr<llvm::MemoryBuffer> input;
+    if (llvm::sys::path::is_absolute(depsPath)) {
+      input = system.getFileSystem().getFileContents(depsPath);
     } else {
-      return ExternalCommand::configureAttribute(ctx, name, value);
+      SmallString<PATH_MAX> absPath = StringRef(workingDirectory);
+      llvm::sys::path::append(absPath, depsPath);
+      llvm::sys::fs::make_absolute(absPath);
+      input = system.getFileSystem().getFileContents(StringRef(absPath));
+    }
+    if (!input) {
+      system.getDelegate().commandHadError(this, "unable to open dependencies file (" + depsPath + ")");
+      return false;
+    }
+    
+    // Parse the output.
+    //
+    // We just ignore the rule, and add any dependency that we encounter in the
+    // file.
+    struct DepsActions : public core::MakefileDepsParser::ParseActions {
+      BuildSystem& system;
+      core::TaskInterface ti;
+      CAPIExternalCommand* command;
+      StringRef depsPath;
+      unsigned numErrors{0};
+      
+      DepsActions(BuildSystem& system,
+                  core::TaskInterface ti,
+                  CAPIExternalCommand* command, StringRef depsPath)
+      : system(system), ti(ti), command(command), depsPath(depsPath) {}
+      
+      virtual void error(StringRef message, uint64_t position) override {
+        system.getDelegate().commandHadError(command, "error reading dependency file '" + depsPath.str() + "': " + std::string(message));
+        ++numErrors;
+      }
+      
+      virtual void actOnRuleDependency(StringRef dependency,
+                                       StringRef unescapedWord) override {
+        if (llvm::sys::path::is_absolute(unescapedWord)) {
+          ti.discoveredDependency(BuildKey::makeNode(unescapedWord).toData());
+          system.getDelegate().commandFoundDiscoveredDependency(command, unescapedWord, DiscoveredDependencyKind::Input);
+          return;
+        }
+
+        // Generate absolute path
+        //
+        // NOTE: This is making the assumption that relative paths coming in a
+        // dependency file are in relation to the explictly set working
+        // directory, or the current working directory when it has not been set.
+        SmallString<PATH_MAX> absPath = StringRef(command->workingDirectory);
+        llvm::sys::path::append(absPath, unescapedWord);
+        llvm::sys::fs::make_absolute(absPath);
+
+        ti.discoveredDependency(BuildKey::makeNode(absPath).toData());
+        system.getDelegate().commandFoundDiscoveredDependency(command, absPath, DiscoveredDependencyKind::Input);
+      }
+
+      virtual void actOnRuleStart(StringRef name,
+                                  const StringRef unescapedWord) override {}
+
+      virtual void actOnRuleEnd() override {}
+    };
+    
+    DepsActions actions(system, ti, this, depsPath);
+    core::MakefileDepsParser(input->getBuffer(), actions, ignoreSubsequentOutputs).parse();
+    return actions.numErrors == 0;
+  }
+  
+  bool configureAttributeNoContext(StringRef name, StringRef value) {
+    if (name == "deps") {
+      depsPaths.clear();
+      depsPaths.emplace_back(value);
+    } else if (name == "deps-style") {
+      if (value == "unused") {
+        depsFormat = llb_buildsystem_dependency_data_format_unused;
+      } else if (value == "makefile") {
+        depsFormat = llb_buildsystem_dependency_data_format_makefile;
+      } else if (value == "dependency-info") {
+        depsFormat = llb_buildsystem_dependency_data_format_dependencyinfo;
+      } else if (value == "makefile-ignoring-subsequent-outputs") {
+        depsFormat = llb_buildsystem_dependency_data_format_makefile_ignoring_subsequent_outputs;
+      } else {
+        return false;
+      }
+    } else if (name == "repair-via-ownership-analysis") {
+      if (value == "true") {
+        repairViaOwnershipAnalysis = true;
+        return true;
+      } else if (value == "false") {
+        repairViaOwnershipAnalysis = false;
+        return true;
+      } else {
+        return false;
+      }
+    } else if (name == "working-directory") {
+      // Ensure the working directory is absolute. This will make sure any
+      // relative directories are interpreted as relative to the CWD at the time
+      // the rule is defined.
+      SmallString<PATH_MAX> wd = value;
+      llvm::sys::fs::make_absolute(wd);
+      workingDirectory = StringRef(wd);
+    } else {
+      return false;
     }
     return true;
   }
+  
+  bool configureAttributeNoContext(StringRef name,
+                                  ArrayRef<StringRef> values) {
+    if (name == "deps") {
+      depsPaths.clear();
+      depsPaths.insert(depsPaths.begin(), values.begin(), values.end());
+    } else {
+      return false;
+    }
+    return true;
+  }
+  bool configureAttributeNoContext(StringRef name,
+      ArrayRef<std::pair<StringRef, StringRef>> values) {
+    return false;
+  }
 
+  virtual bool configureAttribute(const ConfigureContext& ctx, StringRef name,
+                                  StringRef value) override {
+    if (configureAttributeNoContext(name, value)) {
+      return true;
+    } else {
+      return ExternalCommand::configureAttribute(ctx, name, value);
+    }
+  }
+  
+  virtual bool configureAttribute(const ConfigureContext& ctx, StringRef name,
+                                  ArrayRef<StringRef> values) override {
+    if (configureAttributeNoContext(name, values)) {
+      return true;
+    } else {
+      return ExternalCommand::configureAttribute(ctx, name, values);
+    }
+  }
+  virtual bool configureAttribute(
+      const ConfigureContext& ctx, StringRef name,
+      ArrayRef<std::pair<StringRef, StringRef>> values) override {
+        if (configureAttributeNoContext(name, values)) {
+          return true;
+        } else {
+          return ExternalCommand::configureAttribute(ctx, name, values);
+        }
+  }
+  
   virtual void startExternalCommand(BuildSystem& system,
                                     core::TaskInterface ti) override {
     cAPIDelegate.start(cAPIDelegate.context,
@@ -753,32 +961,130 @@ class CAPIExternalCommand : public ExternalCommand {
   // executeExternalCommand().
   CAPIBuildValue* currentBuildValue = nullptr;
 
+  std::atomic<bool> detachedCommandFinished{false};
+  std::unique_ptr<core::CancellationDelegate> cancellationDelegate = nullptr;
+
+  bool isDetached() const override {
+    return cAPIDelegate.execute_command_detached != nullptr;
+  }
+
+  static ProcessStatus getProcessStatusFromLLBResult(llb_buildsystem_command_result_t result) {
+    switch (result) {
+      case llb_buildsystem_command_result_succeeded:
+        return ProcessStatus::Succeeded;
+      case llb_buildsystem_command_result_failed:
+        return ProcessStatus::Failed;
+      case llb_buildsystem_command_result_cancelled:
+        return ProcessStatus::Cancelled;
+      case llb_buildsystem_command_result_skipped:
+        return ProcessStatus::Skipped;
+    }
+  }
+
   virtual void executeExternalCommand(BuildSystem& system,
                                       core::TaskInterface ti,
                                       QueueJobContext* job_context,
                                       llvm::Optional<ProcessCompletionFn> completionFn) override {
     auto doneFn = [this, &system, ti, job_context, completionFn](ProcessStatus result) mutable {
       if (result != ProcessStatus::Succeeded) {
-        // If the command failed, there is no need to gather dependencies.
+        // If the command did not succeed, there is no need to gather dependencies.
         if (completionFn.hasValue())
-          completionFn.getValue()(ProcessStatus::Failed);
+          completionFn.getValue()(result);
         return;
       }
 
       // Otherwise, collect the discovered dependencies, if used.
-      if (!depsPath.empty()) {
-        if (!processDiscoveredDependencies(system, ti, job_context)) {
-          // If we were unable to process the dependencies output, report a
-          // failure.
-          if (completionFn.hasValue())
-            completionFn.getValue()(ProcessStatus::Failed);
-          return;
+      bool dependencyParsingResult = false;
+      if (!depsPaths.empty()) {
+        for (const auto& depsPath: depsPaths) {
+          switch (depsFormat) {
+            case llb_buildsystem_dependency_data_format_unused:
+              ti.delegate()->error("No dependency format specified for discovered dependency files.");
+              dependencyParsingResult = false;
+              break;
+            case llb_buildsystem_dependency_data_format_makefile:
+              dependencyParsingResult = processMakefileDiscoveredDependencies(system, ti, job_context, depsPath, false);
+              break;
+            case llb_buildsystem_dependency_data_format_dependencyinfo:
+              dependencyParsingResult = processDependencyInfoDiscoveredDependencies(system, ti, job_context, depsPath);
+              break;
+            case llb_buildsystem_dependency_data_format_makefile_ignoring_subsequent_outputs:
+              dependencyParsingResult = processMakefileDiscoveredDependencies(system, ti, job_context, depsPath, true);
+              break;
+          }
+          
+          if (!dependencyParsingResult) {
+            // If we were unable to process the dependencies output, report a
+            // failure.
+            if (completionFn.hasValue())
+              completionFn.getValue()(ProcessStatus::Failed);
+            return;
+          }
         }
       }
 
       if (completionFn.hasValue())
         completionFn.getValue()(result);
     };
+
+    if (cAPIDelegate.execute_command_detached) {
+      struct ResultCallbackContext {
+        CAPIExternalCommand *thisCommand;
+        BuildSystem *buildSystem;
+        std::function<void(ProcessStatus result)> doneFn;
+
+        static void callback(void* result_ctx,
+                             llb_buildsystem_command_result_t result,
+                             llb_build_value* rvalue) {
+          ResultCallbackContext *ctx = static_cast<ResultCallbackContext*>(result_ctx);
+          auto thisCommand = ctx->thisCommand;
+          BuildSystem &system = *ctx->buildSystem;
+          auto doneFn = std::move(ctx->doneFn);
+          delete ctx;
+
+          thisCommand->detachedCommandFinished = true;
+          if (auto cancellationDelegate = thisCommand->cancellationDelegate.get()) {
+            system.removeCancellationDelegate(cancellationDelegate);
+            thisCommand->cancellationDelegate = nullptr;
+          }
+
+          thisCommand->currentBuildValue = reinterpret_cast<CAPIBuildValue*>(rvalue);
+          llbuild_defer {
+            delete thisCommand->currentBuildValue;
+            thisCommand->currentBuildValue = nullptr;
+          };
+          doneFn(getProcessStatusFromLLBResult(result));
+        }
+      };
+      auto *callbackCtx = new ResultCallbackContext{this, &system, std::move(doneFn)};
+      cAPIDelegate.execute_command_detached(
+        cAPIDelegate.context,
+        (llb_buildsystem_command_t*)this,
+        (llb_buildsystem_interface_t*)&system,
+        *reinterpret_cast<llb_task_interface_t*>(&ti),
+        (llb_buildsystem_queue_job_context_t*)job_context,
+        callbackCtx, ResultCallbackContext::callback);
+
+      if (cAPIDelegate.cancel_detached_command) {
+        class CAPICancellationDelegate: public core::CancellationDelegate {
+          CAPIExternalCommand *thisCommand;
+
+        public:
+          CAPICancellationDelegate(CAPIExternalCommand *thisCommand) : thisCommand(thisCommand) {}
+
+          void buildCancelled() override {
+            if (thisCommand->detachedCommandFinished)
+              return;
+            thisCommand->cAPIDelegate.cancel_detached_command(
+              thisCommand->cAPIDelegate.context,
+              (llb_buildsystem_command_t*)this);
+          }
+        };
+        this->cancellationDelegate = std::make_unique<CAPICancellationDelegate>(this);
+        system.addCancellationDelegate(this->cancellationDelegate.get());
+      }
+      return;
+    }
 
     if (cAPIDelegate.execute_command_ex) {
       llb_build_value* rvalue = cAPIDelegate.execute_command_ex(
@@ -804,13 +1110,13 @@ class CAPIExternalCommand : public ExternalCommand {
     }
 
     assert(cAPIDelegate.execute_command != nullptr);
-    bool success = cAPIDelegate.execute_command(
+    llb_buildsystem_command_result_t result = cAPIDelegate.execute_command(
       cAPIDelegate.context,
       (llb_buildsystem_command_t*)this,
       (llb_buildsystem_interface_t*)&system,
       *reinterpret_cast<llb_task_interface_t*>(&ti),
       (llb_buildsystem_queue_job_context_t*)job_context);
-    doneFn(success ? ProcessStatus::Succeeded : ProcessStatus::Failed);
+    doneFn(getProcessStatusFromLLBResult(result));
   }
 
   BuildValue computeCommandResult(BuildSystem& system, core::TaskInterface ti) override {
@@ -836,7 +1142,29 @@ class CAPIExternalCommand : public ExternalCommand {
 public:
   CAPIExternalCommand(StringRef name,
                       llb_buildsystem_external_command_delegate_t delegate)
-      : ExternalCommand(name), cAPIDelegate(delegate) {}
+      : ExternalCommand(name), cAPIDelegate(delegate) {
+        if (cAPIDelegate.configure) {
+          auto single = [](llb_buildsystem_command_t* ctx, llb_data_t name, llb_data_t data) {
+            ((CAPIExternalCommand *)ctx)->configureAttributeNoContext(StringRef((const char*)name.data, name.length), StringRef((const char*)data.data, data.length));
+          };
+          auto collection = [](llb_buildsystem_command_t* ctx, llb_data_t name, llb_data_t* datas, size_t size) {
+            std::vector<StringRef> values;
+            for (size_t i = 0; i < size; i++) {
+              values.push_back(StringRef((const char*)datas[i].data, datas[i].length));
+            }
+            ((CAPIExternalCommand *)ctx)->configureAttributeNoContext(StringRef((const char*)name.data, name.length), ArrayRef<StringRef>(values));
+          };
+          auto map = [](llb_buildsystem_command_t* ctx, llb_data_t name, llb_data_t* keys, llb_data_t* values, size_t size) {
+            std::vector<std::pair<StringRef, StringRef>> attributeValues;
+            for (size_t i = 0; i < size; i++) {
+              attributeValues.push_back(std::pair<StringRef, StringRef>(StringRef((const char*)keys[i].data, keys[i].length), StringRef((const char*)values[i].data, values[i].length)));
+            }
+            ((CAPIExternalCommand *)ctx)->configureAttributeNoContext(StringRef((const char*)name.data, name.length), ArrayRef<std::pair<StringRef, StringRef>>(attributeValues));
+          };
+          
+          cAPIDelegate.configure(cAPIDelegate.context, (llb_buildsystem_command_t*)this, single, collection, map);
+        }
+      }
 
 
   virtual void getShortDescription(SmallVectorImpl<char> &result) const override {
@@ -944,7 +1272,7 @@ llb_buildsystem_external_command_create(
   // Check that all required methods are provided.
   assert(delegate.start);
   assert(delegate.provide_value);
-  assert(delegate.execute_command);
+  assert(delegate.execute_command || delegate.execute_command_detached);
   
   return (llb_buildsystem_command_t*) new CAPIExternalCommand(
       StringRef((const char*)name->data, name->length), delegate);
@@ -993,11 +1321,86 @@ void llb_buildsystem_command_interface_task_needs_input(llb_task_interface_t ti,
   coreti->request(((CAPIBuildKey *)key)->getInternalBuildKey().toData(), inputID);
 }
 
+void llb_buildsystem_command_interface_task_needs_single_use_input(llb_task_interface_t ti, llb_build_key_t* key, uintptr_t inputID) {
+  auto coreti = reinterpret_cast<core::TaskInterface*>(&ti);
+  coreti->requestSingleUse(((CAPIBuildKey *)key)->getInternalBuildKey().toData(), inputID);
+}
+
 llb_build_value_file_info_t llb_buildsystem_command_interface_get_file_info(llb_buildsystem_interface_t* bi_p, const char* path) {
   auto bi = (BuildSystem*)bi_p;
   return llbuild::capi::convertFileInfo(bi->getFileSystem().getFileInfo(path));
 }
 
+bool llb_buildsystem_command_interface_spawn(llb_task_interface_t ti, llb_buildsystem_queue_job_context_t *job_context, const char * const*args, int32_t arg_count, const char * const *env_keys, const char * const *env_values, int32_t env_count, llb_data_t *working_dir, llb_buildsystem_spawn_delegate_t *delegate) {
+  auto coreti = reinterpret_cast<core::TaskInterface*>(&ti);
+  auto arguments = std::vector<StringRef>();
+  for (int32_t i = 0; i < arg_count; i++) {
+    arguments.push_back(StringRef(args[i]));
+  }
+  auto environment = std::vector<std::pair<StringRef, StringRef>>();
+  for (int32_t i = 0; i < env_count; i++) {
+    environment.push_back(std::pair<StringRef, StringRef>(StringRef(env_keys[i]), StringRef(env_values[i])));
+  }
+  
+  std::promise<ProcessResult> p;
+  auto result = p.get_future();
+  auto commandCompletionFn = [&p](ProcessResult processResult) mutable {
+    p.set_value(processResult);
+  };
+  
+  class ForwardingProcessDelegate: public basic::ProcessDelegate {
+    llb_buildsystem_spawn_delegate_t *delegate;
+    
+  public:
+    ForwardingProcessDelegate(llb_buildsystem_spawn_delegate_t *delegate): delegate(delegate) {}
+    
+    virtual void processStarted(ProcessContext* ctx, ProcessHandle handle,
+                                llbuild_pid_t pid) {
+      if (delegate != NULL) {
+        delegate->process_started(delegate->context, pid);
+      }
+    }
+
+    virtual void processHadError(ProcessContext* ctx, ProcessHandle handle,
+                                 const Twine& message) {
+      if (delegate != NULL) {
+        auto errStr = message.str();
+        llb_data_t err{ errStr.size(), (const uint8_t*) errStr.data() };
+        delegate->process_had_error(delegate->context, &err);
+      }
+    };
+
+    virtual void processHadOutput(ProcessContext* ctx, ProcessHandle handle,
+                                  StringRef data) {
+      if (delegate != NULL) {
+        llb_data_t message{ data.size(), (const uint8_t*) data.data() };
+        delegate->process_had_output(delegate->context, &message);
+      }
+    };
+
+    virtual void processFinished(ProcessContext* ctx, ProcessHandle handle,
+                                 const ProcessResult& result) {
+      if (delegate != NULL) {
+        llb_buildsystem_command_extended_result_t res;
+        res.result = get_command_result(result.status);
+        res.exit_status = result.exitCode;
+        res.pid = result.pid;
+        res.utime = result.utime;
+        res.stime = result.stime;
+        res.maxrss = result.maxrss;
+        delegate->process_finished(delegate->context, &res);
+      }
+    }
+
+  };
+
+  auto forwardingDelegate = new ForwardingProcessDelegate(delegate);
+  coreti->spawn((QueueJobContext*)job_context, ArrayRef<StringRef>(arguments), ArrayRef<std::pair<StringRef, StringRef>>(environment), {true, false, StringRef((const char*)working_dir->data, working_dir->length)}, {commandCompletionFn}, forwardingDelegate);
+
+  delete forwardingDelegate;
+
+  return result.get().status == ProcessStatus::Succeeded;  
+}
 
 llb_quality_of_service_t llb_get_quality_of_service() {
   switch (getDefaultQualityOfService()) {

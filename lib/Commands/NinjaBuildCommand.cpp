@@ -188,7 +188,7 @@ private:
   union {
     /// The file info for the rule output, for existing inputs and successful
     /// commands with a single output.
-    FileInfo asOutputInfo;
+    FileInfo asOutputInfo { };
 
     /// The file info for successful commands with multiple outputs.
     FileInfo* asOutputInfos;
@@ -666,7 +666,7 @@ public:
 
   void queueJobStarted(JobDescriptor*) override {}
   void queueJobFinished(JobDescriptor*) override {}
-  void processStarted(ProcessContext* ctx, ProcessHandle handle) override {
+  void processStarted(ProcessContext* ctx, ProcessHandle handle, llbuild_pid_t pid) override {
     std::lock_guard<std::mutex> lock(outputBufferMutex);
     outputBuffers.emplace(handle.id, SmallString<1024>());
   }
@@ -1447,7 +1447,7 @@ buildCommand(BuildContext& context, ninja::Command* command) {
 
         DepsActions actions(context, ti, context.workingDirectory, command->getDepsFile());
         core::MakefileDepsParser(bufferOrError.get()->getBuffer(),
-                                 actions).parse();
+                                 actions, false).parse();
         return actions.numErrors == 0;
       }
       }

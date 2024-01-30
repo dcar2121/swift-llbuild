@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llbuild/BuildSystem/BuildFile.h"
+#include "llbuild/BuildSystem/BuildNode.h"
 
 #include "llbuild/Basic/FileSystem.h"
 #include "llbuild/Basic/LLVM.h"
@@ -22,6 +23,12 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/YAMLParser.h"
+#include "llvm/Support/Path.h"
+
+#include "llbuild/Basic/PlatformUtility.h"
+
+#include<algorithm>
+#include<vector>
 
 using namespace llbuild;
 using namespace llbuild::buildsystem;
@@ -94,13 +101,185 @@ static void dumpNode(llvm::yaml::Node* node, unsigned indent) {
 }
 #endif
 
+class OwnershipAnalysis {
+  std::map<BuildNode*, Command*> includedPaths;
+  std::map<BuildNode*, Command*> excludedPaths;
+  BuildFileDelegate& fileDelegate;
+
+public:
+  std::vector<std::pair<BuildNode*, Command*>> outputNodesAndCommands;
+
+  std::vector<std::pair<BuildNode*, Command*>> directoryInputNodesAndCommands;
+
+  OwnershipAnalysis(const BuildDescription::command_set& commands, BuildFileDelegate& fileDelegate): fileDelegate(fileDelegate) {
+    // Extract outputs and directory inputs of all commands
+    for (auto it = commands.begin(); it != commands.end(); it++) {
+      Command* command = (*it).getValue().get();
+      for (auto output: command->getOutputs()) {
+        if (!output->isVirtual()) {
+          outputNodesAndCommands.push_back(std::pair<BuildNode*, Command*>(output, command));
+        }
+      }
+
+      for (auto input: command->getInputs()) {
+        if (input->isDirectory()) {
+          directoryInputNodesAndCommands.push_back(std::pair<BuildNode*, Command*>(input, command));
+        }
+      }
+    }
+
+    // Sort paths according to length to ensure we assign owner to parent before assigning owner to its subpaths
+    std::sort(outputNodesAndCommands.begin(),
+              outputNodesAndCommands.end(),
+              [](const std::pair<BuildNode*, Command*> pairA,
+                 const std::pair<BuildNode*, Command*> pairB) -> bool {
+      return pairA.first->getName().str().length() < pairB.first->getName().str().length();
+    });
+  }
+
+  /// Establish ownerships
+  bool establishOwnerships() {
+    for (auto outputNodeAndCommand: outputNodesAndCommands) {
+        if (outputNodeAndCommand.second->isExternalCommand() && outputNodeAndCommand.second->repairViaOwnershipAnalysis == true) {
+          Command *owner = includedOwnerOf(outputNodeAndCommand.first->getName());
+          if (owner == nullptr) {
+            setOwner(outputNodeAndCommand.first, outputNodeAndCommand.second);
+          } else if (owner == outputNodeAndCommand.second) {
+            // A path and some of its subpaths are listed as output dependencies of a task.. Do nothing.
+          } else {
+            std::vector<Command*> conflictingProducers;
+            conflictingProducers.push_back(outputNodeAndCommand.second);
+            conflictingProducers.push_back(owner);
+            fileDelegate.cannotLoadDueToMultipleProducers(outputNodeAndCommand.first, conflictingProducers);
+            return false;
+          }
+        } else {
+          setExcludedOwner(outputNodeAndCommand.first, outputNodeAndCommand.second);
+        }
+    }
+
+    return true;
+  }
+
+  /// Check if node is unowned
+  const bool isIncludedUnownedNode(const BuildNode* node) {
+    return includedOwnerOf(node->getName()) == nullptr && excludedOwnerOf(node->getName()) == nullptr;
+  }
+
+  /// Set owner
+  void setOwner(BuildNode* node, Command* command) {
+    includedPaths[node] = command;
+  }
+  
+  /// Set owner of a path that is produced by a command excluded from ownership analysis so we can distinguish it from an unowned path
+  void setExcludedOwner(BuildNode* node, Command* command) {
+    excludedPaths[node] = command;
+  }
+
+  /// Lookup included owner (a directory prefix of inputPath that is included in the analysis)
+  Command* includedOwnerOf(StringRef inputPath) {
+    auto it = std::find_if(includedPaths.begin(), includedPaths.end(), [inputPath](const std::pair<BuildNode*, Command*>& buildNodeAndCommand) -> bool {
+      if (buildNodeAndCommand.first->getName().endswith("/")) {
+        return inputPath.startswith(buildNodeAndCommand.first->getName());
+      } else {
+        return inputPath.startswith(buildNodeAndCommand.first->getName().str() + "/");
+      }
+    });
+
+    if (it != includedPaths.end()) {
+      return (*it).second;
+    } else {
+      return nullptr;
+    }
+  }
+
+  /// Lookup owner
+  Command* excludedOwnerOf(StringRef inputPath) {
+    auto it = std::find_if(excludedPaths.begin(), excludedPaths.end(), [inputPath](const std::pair<BuildNode*, Command*>& buildNodeAndCommand) -> bool {
+      // TODO: a good explanation of why we use "==" as opposed to "startswith"
+      return inputPath == buildNodeAndCommand.first->getName();
+    });
+
+    if (it != excludedPaths.end()) {
+      return (*it).second;
+    } else {
+      return nullptr;
+    }
+  }
+
+  // Add input node to additional outputs of its owner
+  //
+  // [TaskB]
+  //  |
+  //  v
+  // owned-directory/
+  //      libX.fake-h
+  //  ,-- libY.fake-h (ownership analysis will automatically amend this to outputs of TaskB)
+  //  |   libZ.fake-h
+  //  v
+  // [TaskC]
+  //  |
+  //  v
+  // libY-from-TaskC.fake-h
+  //
+  // This ensures TaskC will wait until TaskB is finished.
+  void amendOutputOfOwnersWithConsumedSubpaths() {
+    for (auto directoryInputNodeAndCommand: directoryInputNodesAndCommands) {
+      Command *owner = includedOwnerOf(directoryInputNodeAndCommand.first->getName());
+      if (owner != nullptr) {
+        auto ownerOutputs = owner->getOutputs();
+        if (std::find(ownerOutputs.begin(), ownerOutputs.end(), directoryInputNodeAndCommand.first) == ownerOutputs.end()) {
+          if (owner->repairViaOwnershipAnalysis) {
+            owner->addOutput(directoryInputNodeAndCommand.first);
+          }
+        }
+      }
+    }
+  }
+
+  //
+  // unowned-directory/
+  //  |  a.txt <-- TaskA
+  //  |  b.txt <-- TaskB
+  //  v
+  // TaskC
+  //
+  // We should add "a.txt" and "b.txt" to mustScanAfterPaths of "unowned-directory/".
+  // This ensures TaskC will wait until TaskA and TaskB are finished.
+  void deferScanningUnownedInputsUntilSubpathsAvailable() {
+    auto unownedDirectoryInputNodesAndConsumingCommands = std::vector<std::pair<BuildNode*, Command*>>();
+    std::copy_if(directoryInputNodesAndCommands.begin(),
+                 directoryInputNodesAndCommands.end(),
+                 std::back_inserter(unownedDirectoryInputNodesAndConsumingCommands),
+                 [this](const std::pair<BuildNode*, Command*> directoryInputNodeAndCommand) -> bool {
+      return isIncludedUnownedNode(directoryInputNodeAndCommand.first) && directoryInputNodeAndCommand.second->repairViaOwnershipAnalysis;
+    });
+
+    // For each output node and its producing command (e.g. "unowned-directory/a.txt" and "TaskA"),
+    // check if there exists an unowned node (e.g. "unowned-directory/" used by "TaskC") that is a parent of the produced node.
+    // Only add "a.txt" to mustScanAfterPaths of "unowned-directory/" if TaskC is marked as "repairViaOwnershipAnalysis".
+    for (auto outputNodeAndCommand: outputNodesAndCommands) {
+      auto repairableUnownedNode =
+        std::find_if(unownedDirectoryInputNodesAndConsumingCommands.begin(),
+                     unownedDirectoryInputNodesAndConsumingCommands.end(),
+                     [=](std::pair<BuildNode*, Command*> unownedDirectoryAndCommand) -> bool {
+          return outputNodeAndCommand.first->getName().startswith(unownedDirectoryAndCommand.first->getName()) && outputNodeAndCommand.second->repairViaOwnershipAnalysis == true;
+      });
+      
+      if (repairableUnownedNode != unownedDirectoryInputNodesAndConsumingCommands.end()) {
+        (*repairableUnownedNode).first->mustScanAfterPaths.push_back(outputNodeAndCommand.first->getName());
+      }
+    }
+  }
+};
+
 class BuildFileImpl {
   /// The name of the main input file.
   std::string mainFilename;
 
-  /// The delegate the BuildFile was configured with.
+  /// The build file delegate the BuildFile was configured with.
   BuildFileDelegate& delegate;
-
+  
   /// The set of all registered tools.
   BuildDescription::tool_set tools;
 
@@ -115,7 +294,10 @@ class BuildFileImpl {
 
   /// The set of all declared commands.
   BuildDescription::command_set commands;
-  
+
+  /// Indicates if we should perform ownership analysis after we read the build file
+  bool performOwnershipAnalysis = false;
+
   /// The number of parsing errors.
   int numErrors = 0;
     
@@ -325,6 +507,10 @@ class BuildFileImpl {
       } else if (key == "version") {
         if (StringRef(value).getAsInteger(10, version)) {
           error(entry.getValue(), "invalid version number in 'client' map");
+        }
+      } if (key == "perform-ownership-analysis") {
+        if (value == "yes") {
+          performOwnershipAnalysis = true;
         }
       } else {
         properties.push_back({ key, value });
@@ -871,6 +1057,16 @@ public:
     if (++it != stream.end()) {
       error(it->getRoot(), "unexpected additional document in stream");
       return nullptr;
+    }
+
+    if (performOwnershipAnalysis) {
+      OwnershipAnalysis ownershipAnalysis = OwnershipAnalysis(commands, delegate);
+      if (ownershipAnalysis.establishOwnerships()) {
+        ownershipAnalysis.amendOutputOfOwnersWithConsumedSubpaths();
+        ownershipAnalysis.deferScanningUnownedInputsUntilSubpathsAvailable();
+      } else {
+        return nullptr;
+      }
     }
 
     // Create the actual description from our constructed elements.

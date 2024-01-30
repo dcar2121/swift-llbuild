@@ -10,6 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llbuild/BuildSystem/BuildNode.h"
+
 #ifndef LLBUILD_BUILDSYSTEM_COMMAND_H
 #define LLBUILD_BUILDSYSTEM_COMMAND_H
 
@@ -47,10 +49,13 @@ class Command : public basic::JobDescriptor {
   Command &operator=(Command&& rhs) LLBUILD_DELETED_FUNCTION;
     
   std::string name;
-
 public:
   explicit Command(StringRef name) : name(name) {}
   virtual ~Command();
+
+  std::vector<BuildNode*> inputs;
+  std::vector<BuildNode*> outputs;
+  bool repairViaOwnershipAnalysis = false;
 
   StringRef getName() const { return name; }
 
@@ -146,6 +151,24 @@ public:
   virtual void provideValue(BuildSystem& system, core::TaskInterface,
                             uintptr_t inputID, const BuildValue& value) = 0;
 
+
+  virtual bool isExternalCommand() const { return false; }
+
+  /// The command should execute outside the execution lanes.
+  virtual bool isDetached() const { return false; }
+
+  virtual void addOutput(BuildNode* node) final {
+    outputs.push_back(node);
+    node->getProducers().push_back(this);
+  }
+
+  virtual const std::vector<BuildNode*>& getInputs() const final {
+    return inputs;
+  }
+  
+  virtual const std::vector<BuildNode*>& getOutputs() const final {
+    return outputs;
+  }
 
   typedef std::function<void (BuildValue&&)> ResultFn;
 

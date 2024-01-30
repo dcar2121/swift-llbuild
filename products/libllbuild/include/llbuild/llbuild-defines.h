@@ -31,7 +31,7 @@
 #define LLBUILD_EXPORT LLBUILD_EXTERN __attribute__((__visibility__("default")))
 #else
 // asume PE/COFF
-#if defined(_DLL)
+#if defined(_WINDLL)
 #if defined(libllbuild_EXPORTS)
 #define LLBUILD_EXPORT LLBUILD_EXTERN __declspec(dllexport)
 #else
@@ -85,6 +85,14 @@
 ///
 /// Version History:
 ///
+/// 17: Added `llb_buildsystem_dependency_data_format_makefile_ignoring_subsequent_outputs`
+///
+/// 16: Added more efficient C API for working with custom tasks
+///
+/// 15: Added `determined_rule_needs_to_run` delegate method
+///
+/// 14: Added configure API to CAPIExternalCommand
+///
 /// 13: Update command status for custom tasks as well
 ///
 /// 12: Invoke provideValue on ExternalCommand for all build values
@@ -112,6 +120,6 @@
 /// 1: Added `environment` parameter to llb_buildsystem_invocation_t.
 ///
 /// 0: Pre-history
-#define LLBUILD_C_API_VERSION 13
+#define LLBUILD_C_API_VERSION 17
 
 #endif

@@ -169,6 +169,7 @@ static void SetMemoryLimits(unsigned size) {
 
 }
 
+#if defined(HAVE_POSIX_SPAWN) || !TARGET_OS_IPHONE
 static std::vector<const char *>
 toNullTerminatedCStringArray(ArrayRef<StringRef> Strings, StringSaver &Saver) {
   std::vector<const char *> Result;
@@ -177,6 +178,7 @@ toNullTerminatedCStringArray(ArrayRef<StringRef> Strings, StringSaver &Saver) {
   Result.push_back(nullptr);
   return Result;
 }
+#endif
 
 static bool Execute(ProcessInfo &PI, StringRef Program,
                     ArrayRef<StringRef> Args, Optional<ArrayRef<StringRef>> Env,
@@ -189,6 +191,7 @@ static bool Execute(ProcessInfo &PI, StringRef Program,
     return false;
   }
 
+#if defined(HAVE_POSIX_SPAWN) || !TARGET_OS_IPHONE
   BumpPtrAllocator Allocator;
   StringSaver Saver(Allocator);
   std::vector<const char *> ArgVector, EnvVector;
@@ -200,6 +203,7 @@ static bool Execute(ProcessInfo &PI, StringRef Program,
     EnvVector = toNullTerminatedCStringArray(*Env, Saver);
     Envp = EnvVector.data();
   }
+#endif
 
   // If this OS has posix_spawn and there is no memory limit being implied, use
   // posix_spawn.  It is more efficient than fork/exec.

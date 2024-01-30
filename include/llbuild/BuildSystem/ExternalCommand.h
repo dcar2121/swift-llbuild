@@ -44,8 +44,6 @@ class ExternalCommandHandler;
 /// build system and interact using files. It defines common base behaviors
 /// which make sense for all such tools.
 class ExternalCommand : public Command {
-  std::vector<BuildNode*> inputs;
-  std::vector<BuildNode*> outputs;
   std::string description;
 
   /// Whether to allow missing inputs.
@@ -70,6 +68,9 @@ class ExternalCommand : public Command {
   /// (this implies ShouldSkip is true).
   SmallPtrSet<Node*, 1> missingInputNodes;
 
+  /// If true, the command had missing dynamic inputs.
+  bool hasMissingDynamicInputs = false;
+
   /// If true, the command can legally be updated if the output state allows it.
   bool canUpdateIfNewer = true;
 
@@ -81,10 +82,6 @@ class ExternalCommand : public Command {
   bool canUpdateIfNewerWithResult(const BuildValue& result);
 
 protected:
-  const std::vector<BuildNode*>& getInputs() const { return inputs; }
-  
-  const std::vector<BuildNode*>& getOutputs() const { return outputs; }
-  
   StringRef getDescription() const { return description; }
 
   /// This function must be overriden by subclasses for any additional keys.
@@ -112,6 +109,8 @@ protected:
 
 public:
   using Command::Command;
+
+  bool isExternalCommand() const override { return true; }
 
   virtual void configureDescription(const ConfigureContext&,
                                     StringRef value) override;

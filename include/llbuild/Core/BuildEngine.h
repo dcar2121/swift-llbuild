@@ -18,7 +18,7 @@
 #include "llbuild/Basic/ExecutionQueue.h"
 #include "llbuild/Basic/Hashing.h"
 
-#include "llbuild/Core/AttributedKeyIDs.h"
+#include "llbuild/Core/DependencyKeyIDs.h"
 #include "llbuild/Core/KeyID.h"
 
 #include "llvm/ADT/StringRef.h"
@@ -89,7 +89,7 @@ struct Result {
   Epoch builtAt = 0;
 
   /// The explicit dependencies required by the generation.
-  AttributedKeyIDs dependencies;
+  DependencyKeyIDs dependencies;
   
   /// The start of the command as a timestamp since a reference time
   basic::Clock::Timestamp start;
@@ -138,6 +138,13 @@ public:
   /// by the engine.
   void request(const KeyType& key, uintptr_t inputID);
 
+  /// Request a task as a dependency just for the current build iteration. Once
+  /// the requesting task finishes, the dependency will be removed so that
+  /// incremental builds won't consider it for invalidating the task.
+  ///
+  /// NOTE: This method behaves like `request` for the current build.
+  void requestSingleUse(const KeyType& key, uintptr_t inputID);
+  
   /// Specify that the task must be built subsequent to the
   /// computation of \arg Key.
   ///
@@ -187,7 +194,8 @@ public:
              ArrayRef<StringRef> commandLine,
              ArrayRef<std::pair<StringRef, StringRef>> environment,
              basic::ProcessAttributes attributes = {true},
-             llvm::Optional<basic::ProcessCompletionFn> completionFn = {llvm::None});
+             llvm::Optional<basic::ProcessCompletionFn> completionFn = {llvm::None},
+             basic::ProcessDelegate* delegate = nullptr);
 
   basic::ProcessStatus spawn(basic::QueueJobContext* context,
                              ArrayRef<StringRef> commandLine);
@@ -307,6 +315,23 @@ public:
     SupplyPriorValue = 1
   };
 
+  enum class RunReason {
+    /// The rule has not built before.
+    NeverBuilt = 0,
+  
+    /// The rule's signature changed.
+    SignatureChanged = 1,
+  
+    /// The rule has an invalid value.
+    InvalidValue = 2,
+  
+    /// An input of the rule was rebuilt.
+    InputRebuilt = 3,
+  
+    /// The rule was forced, e.g. during cycle breaking.
+    Forced = 4
+  };
+
 public:
   /// The key computed by the rule.
   const KeyType key;
@@ -356,6 +381,15 @@ public:
   /// that the client can translate into an error.
   virtual std::unique_ptr<Rule> lookupRule(const KeyType& key) = 0;
 
+  /// Called when it's been determined that a rule needs to run.
+  ///
+  ///  \param ruleNeedingToRun - The rule that needs to run.
+  ///
+  ///  \param reason - Describes why the rule needs to run. For example, because it has never run or because an input was rebuilt.
+  ///
+  ///  \param inputRule - If `reason` is `InputRebuilt`, the rule for the rebuilt input, else  `nullptr`.
+  virtual void determinedRuleNeedsToRun(Rule* ruleNeedingToRun, Rule::RunReason reason, Rule* inputRule);
+
   /// Called when a cycle is detected by the build engine to check if it should
   /// attempt to resolve the cycle and continue
   ///
@@ -387,6 +421,14 @@ public:
   /// \param message The diagnostic message.
   virtual void error(const llvm::Twine& message) = 0;
 
+};
+
+/// Delegate interface for build cancellation notifications.
+class CancellationDelegate {
+public:
+  virtual ~CancellationDelegate();
+
+  virtual void buildCancelled() = 0;
 };
 
 /// A build engine supports fast, incremental, persistent, and parallel
@@ -466,7 +508,10 @@ public:
 
   void resetForBuild();
   bool isCancelled();
-  
+
+  void addCancellationDelegate(CancellationDelegate* del);
+  void removeCancellationDelegate(CancellationDelegate* del);
+
   /// Attach a database for persisting build state.
   ///
   /// A database should only be attached immediately after creating the engine,

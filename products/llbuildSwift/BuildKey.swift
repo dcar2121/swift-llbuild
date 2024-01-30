@@ -15,6 +15,8 @@ import ucrt
 import WinSDK
 #elseif canImport(Glibc)
 import Glibc
+#elseif canImport(Musl)
+import Musl
 #else
 #error("Missing libc or equivalent")
 #endif
@@ -146,6 +148,12 @@ public class BuildKey: CustomStringConvertible, Equatable, Hashable {
             self.init(llb_build_key_make_custom_task(name, taskData))
         }
         
+        public convenience init(name: String, taskDataBytes: [UInt8]) {
+            self.init(taskDataBytes.withUnsafeBufferPointer { buf in
+                llb_build_key_make_custom_task_with_data(name, llb_data_t(length: UInt64(buf.count), data: buf.baseAddress))
+            })
+        }
+        
         /// The name of the task
         public var name: String {
             return formString {
@@ -158,6 +166,12 @@ public class BuildKey: CustomStringConvertible, Equatable, Hashable {
             return formString {
                 llb_build_key_get_custom_task_data(internalBuildKey, &$0)
             }
+        }
+        
+        public var taskDataBytes: [UInt8] {
+            var data = llb_data_t()
+            llb_build_key_get_custom_task_data_no_copy(internalBuildKey, &data)
+            return Array(UnsafeBufferPointer(start: data.data, count: Int(data.length)))
         }
         
         public override var description: String {
@@ -253,8 +267,12 @@ public class BuildKey: CustomStringConvertible, Equatable, Hashable {
 
     /// A key used to identify the signature of a complete directory tree.
     public final class DirectoryTreeStructureSignature: BuildKey {
-        public convenience init(path: String) {
-            self.init(llb_build_key_make_directory_tree_structure_signature(path))
+        public convenience init(path: String, filters: [String] = []) {
+            let ptr = filters.withCArrayOfStrings { ptr in
+                llb_build_key_make_directory_tree_structure_signature(path, ptr, Int32(filters.count))
+            }
+
+            self.init(ptr)
         }
         
         /// The path of the directory
@@ -263,9 +281,21 @@ public class BuildKey: CustomStringConvertible, Equatable, Hashable {
                 llb_build_key_get_directory_tree_structure_signature_path(internalBuildKey, &$0)
             }
         }
-        
+
+        /// The filters to apply to the content
+        public var filters: [String] {
+            var result = [String]()
+            withUnsafeMutablePointer(to: &result) { ptr in
+                llb_build_key_get_directory_tree_structure_signature_filters(internalBuildKey, ptr) { ctx, data in
+                    ctx!.assumingMemoryBound(to: [String].self).pointee.append(stringFromData(data))
+                }
+            }
+
+            return result
+        }
+
         public override var description: String {
-            return "<BuildKey.\(type(of: self)) path=\(path)>"
+            return "<BuildKey.\(type(of: self)) path=\(path) filters=[\(filters.joined(separator: ", "))]>"
         }
     }
 

@@ -69,7 +69,7 @@ private:
     }
   }
 
-  void processStarted(basic::ProcessContext*, basic::ProcessHandle) override { }
+  void processStarted(basic::ProcessContext*, basic::ProcessHandle, llbuild_pid_t) override { }
   void processHadError(basic::ProcessContext*, basic::ProcessHandle, const Twine&) override { }
   void processHadOutput(basic::ProcessContext*, basic::ProcessHandle, StringRef) override { }
   void processFinished(basic::ProcessContext*, basic::ProcessHandle, const basic::ProcessResult&) override { }
@@ -555,10 +555,10 @@ TEST(BuildEngineTest, deepDependencyScanningStack) {
   int lastInputValue = 0;
   for (int i = 0; i != depth; ++i) {
     char name[32];
-    sprintf(name, "input-%d", i);
+    snprintf(name, sizeof(name), "input-%d", i);
     if (i != depth-1) {
       char inputName[32];
-      sprintf(inputName, "input-%d", i+1);
+      snprintf(inputName, sizeof(inputName), "input-%d", i+1);
       engine.addRule(std::unique_ptr<core::Rule>(new SimpleRule(
           name, { inputName },
                              [] (const std::vector<int>& inputs) {

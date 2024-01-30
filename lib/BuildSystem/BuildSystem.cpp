@@ -108,6 +108,9 @@ public:
                      const BuildFileToken& at,
                      const Twine& message) override;
 
+  virtual void cannotLoadDueToMultipleProducers(Node *output,
+                                                std::vector<Command*> commands) override;
+
   virtual bool configureClient(const ConfigureContext&, StringRef name,
                                uint32_t version,
                                const property_list_type& properties) override;
@@ -144,6 +147,7 @@ class BuildSystemEngineDelegate : public BuildEngineDelegate {
   const BuildDescription& getBuildDescription() const;
 
   virtual std::unique_ptr<Rule> lookupRule(const KeyType& keyData) override;
+  virtual void determinedRuleNeedsToRun(Rule* ruleNeedingToRun, Rule::RunReason reason, Rule* inputRule) override;
   virtual bool shouldResolveCycle(const std::vector<Rule*>& items,
                                   Rule* candidateRule,
                                   Rule::CycleAction action) override;
@@ -282,10 +286,14 @@ public:
     return internalSchemaVersion + (clientVersion << 16);
   }
 
-  void configureFileSystem(bool deviceAgnostic) {
-    if (deviceAgnostic) {
+  void configureFileSystem(int mode) {
+    if (mode == 1) {
       std::unique_ptr<basic::FileSystem> newFS(
           new DeviceAgnosticFileSystem(std::move(fileSystem)));
+      fileSystem.swap(newFS);
+    } else if (mode == 2) {
+      std::unique_ptr<basic::FileSystem> newFS(
+          new ChecksumOnlyFileSystem(std::move(fileSystem)));
       fileSystem.swap(newFS);
     }
   }
@@ -346,6 +354,14 @@ public:
   /// Check if the build has been cancelled.
   bool isCancelled() {
     return buildEngine.isCancelled();
+  }
+
+  void addCancellationDelegate(CancellationDelegate* del) {
+    buildEngine.addCancellationDelegate(del);
+  }
+
+  void removeCancellationDelegate(CancellationDelegate* del) {
+    buildEngine.removeCancellationDelegate(del);
   }
 
   /// @}
@@ -572,7 +588,10 @@ class DirectoryInputNodeTask : public Task {
 
   core::ValueType directorySignature;
 
-  virtual void start(TaskInterface ti) override {
+  int totalBlockingDeps = 0;
+  int finishedBlockingDeps = 0;
+
+  void performUnblockedRequest(TaskInterface ti) {
     // Remove any trailing slash from the node name.
     StringRef path =  node.getName();
     if (path.endswith("/") && path != "/") {
@@ -584,13 +603,38 @@ class DirectoryInputNodeTask : public Task {
                /*inputID=*/0);
   }
 
+  virtual void start(TaskInterface ti) override {
+    // We reserve inputID=0 for the blocked DirectoryTreeSignature request.
+    // inputID=1, 2, ... are used for mustScanAfterPaths
+    for (auto mustScanAfterPath: node.getMustScanAfterPaths()) {
+      ++totalBlockingDeps;
+      ti.request(BuildKey::makeNode(mustScanAfterPath).toData(), totalBlockingDeps);
+    }
+
+    // If mustScanAfterPaths is empty, simply request DirectoryTreeSignature in start
+    if (totalBlockingDeps == 0) {
+      performUnblockedRequest(ti);
+    }
+  }
+
   virtual void providePriorValue(TaskInterface,
                                  const ValueType& value) override {
   }
 
-  virtual void provideValue(TaskInterface, uintptr_t inputID,
-                            const ValueType& value) override {
-    directorySignature = value;
+  virtual void provideValue(TaskInterface ti, uintptr_t inputID,
+                            const ValueType& valueData) override {
+    if (inputID == 0) {
+      directorySignature = valueData;
+    } else {
+      auto value = BuildValue::fromData(valueData);
+
+      ++finishedBlockingDeps;
+      if (finishedBlockingDeps == totalBlockingDeps) {
+        // All paths within mustScanAfterPaths are scanned..
+        // DirectoryTreeSignature is unblocked
+        performUnblockedRequest(ti);
+      }
+    }
   }
 
   virtual void inputsAvailable(TaskInterface ti) override {
@@ -622,7 +666,8 @@ class DirectoryStructureInputNodeTask : public Task {
     if (path.endswith("/") && path != "/") {
       path = path.substr(0, path.size() - 1);
     }
-    ti.request(BuildKey::makeDirectoryTreeStructureSignature(path).toData(),
+    ti.request(BuildKey::makeDirectoryTreeStructureSignature(path,
+                 node.contentExclusionPatterns()).toData(),
                /*inputID=*/0);
   }
 
@@ -766,6 +811,113 @@ public:
   }
 };
 
+class ProducedDirectoryNodeTask : public Task {
+  Node& node;
+
+  BuildValue nodeResult;
+  core::ValueType directorySignature;
+
+  Command* producingCommand = nullptr;
+
+  // Whether this is a node we are unable to produce.
+  bool isInvalid = false;
+  bool returnDirectorySignature = false;
+
+  virtual void start(TaskInterface ti) override {
+    // Request the producer command.
+    auto getCommand = [&]()->Command* {
+      if (node.getProducers().size() == 1) {
+        return node.getProducers()[0];
+      }
+      // Give the delegate a chance to resolve to a single command.
+      return getBuildSystem(ti).getDelegate().
+          chooseCommandFromMultipleProducers(&node, node.getProducers());
+    };
+
+    if (Command* foundCommand = getCommand()) {
+      producingCommand = foundCommand;
+      ti.request(BuildKey::makeCommand(producingCommand->getName()).toData(),
+                 /*InputID=*/0);
+      return;
+    }
+
+    // Notify that we could not resolve to a single producer.
+    getBuildSystem(ti).getDelegate().
+        cannotBuildNodeDueToMultipleProducers(&node, node.getProducers());
+    isInvalid = true;
+  }
+
+  virtual void providePriorValue(TaskInterface,
+                                 const ValueType& value) override {
+  }
+
+  virtual void provideValue(TaskInterface ti, uintptr_t inputID,
+                            const ValueType& valueData) override {
+    if (inputID == 0) {
+      auto value = BuildValue::fromData(valueData);
+
+      // Extract the node result from the command.
+      assert(producingCommand);
+
+      // NOTE: nodeResult only contains stat info of the directory, not its signature.
+      nodeResult = producingCommand->getResultForOutput(&node, value);
+
+      if (nodeResult.isExistingInput()) {
+        // The external command must have produced the directory node.
+        // Request for its signature and store it
+
+        StringRef path =  node.getName();
+        if (path.endswith("/") && path != "/") {
+          path = path.substr(0, path.size() - 1);
+        }
+        ti.request(BuildKey::makeDirectoryTreeSignature(path,basic::StringList()).toData(), /*inputID=*/1);
+        returnDirectorySignature = true;
+      }
+    } else if (inputID == 1) {
+      directorySignature = valueData;
+    }
+  }
+
+  virtual void inputsAvailable(TaskInterface ti) override {
+    if (returnDirectorySignature) {
+      ti.complete(ValueType(directorySignature));
+      return;
+    } else {
+      if (isInvalid) {
+        getBuildSystem(ti).getDelegate().hadCommandFailure();
+        ti.complete(BuildValue::makeFailedInput().toData());
+        return;
+      }
+      assert(!nodeResult.isInvalid());
+      
+      // Complete the task immediately.
+      ti.complete(nodeResult.toData());
+    }
+  }
+
+public:
+  ProducedDirectoryNodeTask(Node& node)
+      : node(node), nodeResult(BuildValue::makeInvalid()) {}
+
+  static bool isResultValid(BuildEngine& engine, Node& node,
+                            const BuildValue& value) {
+    // If the result was failure, we always need to rebuild (it may produce an
+    // error).
+    if (value.isFailedInput())
+      return false;
+
+    // If the result was previously a missing input, it may have been because
+    // we did not previously know how to produce this node. We do now, so
+    // attempt to build it now.
+    if (value.isMissingInput())
+      return false;
+
+    // The produced node result itself doesn't need any synchronization.
+    // If the directory signature is changed, it will be reflected in value of this node.
+    return true;
+  }
+};
+
 
 /// This task is responsible for computing the lists of files in directories.
 class DirectoryContentsTask : public Task {
@@ -844,7 +996,11 @@ class DirectoryContentsTask : public Task {
     }
 
     std::vector<std::string> filenames;
-    getContents(path, filenames);
+    std::error_code ec = getContents(path, filenames);
+
+    // Currently, tests and presumably clients expect that errors are silently
+    // ignored when reading directory contents listings.
+    (void)ec;
 
     // Create the result.
     ti.complete(BuildValue::makeDirectoryContents(directoryValue.getOutputInfo(),
@@ -852,14 +1008,17 @@ class DirectoryContentsTask : public Task {
   }
 
 
-  static void getContents(StringRef path, std::vector<std::string>& filenames) {
+  static std::error_code getContents(StringRef path, std::vector<std::string>& filenames) {
     // Get the list of files in the directory.
     // FIXME: This is not going through the filesystem object. Indeed the fs
     // object does not currently support directory listing/iteration, but
     // probably should so that clients may override it.
+    //
+    // Exit the loop if we encounter any errors, to prevent infinitely looping
+    // over an invalid directory in some circumstances. rdar://101717159
     std::error_code ec;
     for (auto it = llvm::sys::fs::directory_iterator(path, ec),
-         end = llvm::sys::fs::directory_iterator(); it != end;
+         end = llvm::sys::fs::directory_iterator(); it != end && !ec;
          it = it.increment(ec)) {
       filenames.push_back(llvm::sys::path::filename(it->path()));
     }
@@ -869,6 +1028,8 @@ class DirectoryContentsTask : public Task {
               [](const std::string& a, const std::string& b) {
                 return a < b;
               });
+
+    return ec;
   }
 
 
@@ -899,7 +1060,12 @@ public:
       // With filters, we list the current filtered contents and then compare
       // the lists.
       std::vector<std::string> cur;
-      getContents(path, cur);
+      std::error_code ec = getContents(path, cur);
+
+      // Currently, tests and presumably clients expect that errors are silently
+      // ignored when reading directory contents listings.
+      (void)ec;
+
       auto prev = value.getDirectoryContents();
 
       if (cur.size() != prev.size())
@@ -1000,7 +1166,7 @@ class FilteredDirectoryContentsTask : public Task {
   }
 
 
-  static void getFilteredContents(StringRef path, const StringList& filters,
+  static std::error_code getFilteredContents(StringRef path, const StringList& filters,
                                   std::vector<std::string>& filenames) {
     auto filterStrings = filters.getValues();
 
@@ -1008,9 +1174,12 @@ class FilteredDirectoryContentsTask : public Task {
     // FIXME: This is not going through the filesystem object. Indeed the fs
     // object does not currently support directory listing/iteration, but
     // probably should so that clients may override it.
+    //
+    // Exit the loop if we encounter any errors, to prevent infinitely looping
+    // over an invalid directory in some circumstances. rdar://101717159
     std::error_code ec;
     for (auto it = llvm::sys::fs::directory_iterator(path, ec),
-         end = llvm::sys::fs::directory_iterator(); it != end;
+         end = llvm::sys::fs::directory_iterator(); it != end && !ec;
          it = it.increment(ec)) {
       std::string filename = llvm::sys::path::filename(it->path());
       bool excluded = false;
@@ -1031,6 +1200,8 @@ class FilteredDirectoryContentsTask : public Task {
               [](const std::string& a, const std::string& b) {
                 return a < b;
               });
+
+    return ec;
   }
 
 
@@ -1219,6 +1390,9 @@ class DirectoryTreeStructureSignatureTask : public Task {
   /// The path we are taking the signature of.
   std::string path;
 
+  /// The exclusion filters used while computing the signature
+  StringList filters;
+
   /// The value for the directory itself.
   ValueType directoryValue;
 
@@ -1230,7 +1404,12 @@ class DirectoryTreeStructureSignatureTask : public Task {
   
   virtual void start(TaskInterface ti) override {
     // Ask for the base directory directory contents.
-    ti.request(BuildKey::makeDirectoryContents(path).toData(), /*inputID=*/0);
+    if (filters.isEmpty()) {
+      ti.request(BuildKey::makeDirectoryContents(path).toData(), /*inputID=*/0);
+    } else {
+      ti.request(BuildKey::makeFilteredDirectoryContents(path, filters).toData(),
+                 /*inputID=*/0);
+    }
   }
 
   virtual void providePriorValue(TaskInterface,
@@ -1249,7 +1428,7 @@ class DirectoryTreeStructureSignatureTask : public Task {
       if (value.isMissingInput() || value.isSkippedCommand())
         return;
 
-      assert(value.isDirectoryContents());
+      assert(value.isFilteredDirectoryContents() || value.isDirectoryContents());
       auto filenames = value.getDirectoryContents();
       for (size_t i = 0; i != filenames.size(); ++i) {
         SmallString<256> childPath{ path };
@@ -1275,7 +1454,7 @@ class DirectoryTreeStructureSignatureTask : public Task {
           llvm::sys::path::append(childPath, childResult.filename);
         
           ti.request(
-            BuildKey::makeDirectoryTreeStructureSignature(childPath).toData(),
+            BuildKey::makeDirectoryTreeStructureSignature(childPath, filters).toData(),
             /*inputID=*/1 + childResults.size() + index);
         }
       }
@@ -1338,7 +1517,7 @@ class DirectoryTreeStructureSignatureTask : public Task {
   }
 
 public:
-  DirectoryTreeStructureSignatureTask(StringRef path) : path(path) {}
+  DirectoryTreeStructureSignatureTask(StringRef path, StringList&& filters) : path(path), filters(std::move(filters)) {}
 };
 
 
@@ -1392,7 +1571,15 @@ class CommandTask : public Task {
         ti.complete(result.toData());
       });
     };
-    ti.spawn({ &command, std::move(fn) });
+    if (command.isDetached()) {
+      struct DetachedContext: public QueueJobContext {
+        unsigned laneID() const override { return -1; }
+      };
+      DetachedContext ctx;
+      fn(&ctx);
+    } else {
+      ti.spawn({ &command, std::move(fn) });
+    }
   }
 
 public:
@@ -1644,13 +1831,15 @@ std::unique_ptr<Rule> BuildSystemEngineDelegate::lookupRule(const KeyType& keyDa
   }
 
   case BuildKey::Kind::DirectoryTreeStructureSignature: {
-    std::string path = key.getDirectoryPath();
+    std::string path = key.getFilteredDirectoryPath();
+    std::string filters = key.getContentExclusionPatterns();
     return std::unique_ptr<Rule>(new BuildSystemRule(
       keyData,
       /*signature=*/{},
-      /*Action=*/ [path](
+      /*Action=*/ [path, filters](
           BuildEngine& engine) mutable -> Task* {
-        return new DirectoryTreeStructureSignatureTask(path);
+        BinaryDecoder decoder(filters);
+        return new DirectoryTreeStructureSignatureTask(path, StringList(decoder));
       },
         // Directory signatures don't require any validation outside of their
         // concrete dependencies.
@@ -1701,6 +1890,7 @@ std::unique_ptr<Rule> BuildSystemEngineDelegate::lookupRule(const KeyType& keyDa
         ));
       }
 
+      // DirectoryInputNodeTask
       if (node->isDirectory()) {
         return std::unique_ptr<Rule>(new BuildSystemRule(
           keyData,
@@ -1726,7 +1916,8 @@ std::unique_ptr<Rule> BuildSystemEngineDelegate::lookupRule(const KeyType& keyDa
           /*IsValid=*/ nullptr
         ));
       }
-      
+
+      // FileInputNodeTask
       return std::unique_ptr<Rule>(new BuildSystemRule(
         keyData,
         node->getSignature(),
@@ -1742,6 +1933,23 @@ std::unique_ptr<Rule> BuildSystemEngineDelegate::lookupRule(const KeyType& keyDa
     }
 
     // Otherwise, create a task for a produced node.
+    // ProducedDirectoryNodeTask
+    if (node->isDirectory()) {
+      return std::unique_ptr<Rule>(new BuildSystemRule(
+        keyData,
+        node->getSignature(),
+        /*Action=*/ [node](BuildEngine& engine) -> Task* {
+          return new ProducedDirectoryNodeTask(*node);
+        },
+        /*IsValid=*/ [node](BuildEngine& engine, const Rule& rule,
+                            const ValueType& value) -> bool {
+          return ProducedDirectoryNodeTask::isResultValid(
+              engine, *node, BuildValue::fromData(value));
+        }
+      ));
+    }
+
+    // ProducedNodeTask
     return std::unique_ptr<Rule>(new BuildSystemRule(
       keyData,
       node->getSignature(),
@@ -1810,6 +2018,10 @@ std::unique_ptr<Rule> BuildSystemEngineDelegate::lookupRule(const KeyType& keyDa
 
   assert(0 && "invalid key type");
   abort();
+}
+
+void BuildSystemEngineDelegate::determinedRuleNeedsToRun(Rule* ruleNeedingToRun, Rule::RunReason reason, Rule* inputRule) {
+  return getBuildSystem().getDelegate().determinedRuleNeedsToRun(ruleNeedingToRun, reason, inputRule);
 }
 
 bool BuildSystemEngineDelegate::shouldResolveCycle(const std::vector<Rule*>& cycle,
@@ -2069,7 +2281,7 @@ class ClangShellCommand : public ExternalCommand {
     };
 
     DepsActions actions(ti, this);
-    core::MakefileDepsParser(input->getBuffer(), actions).parse();
+    core::MakefileDepsParser(input->getBuffer(), actions, false).parse();
     return actions.numErrors == 0;
   }
 
@@ -2153,8 +2365,6 @@ public:
 
       // Otherwise, collect the discovered dependencies, if used.
       if (!depsPath.empty()) {
-        // FIXME: Really want this job to go into a high priority fifo queue
-        // so as to not hold up downstream tasks.
         ti.spawn({ this, [this, ti, completionFn, result](QueueJobContext* context) mutable {
           if (!processDiscoveredDependencies(ti, context)) {
             // If we were unable to process the dependencies output, report a
@@ -2165,7 +2375,7 @@ public:
           }
           if (completionFn.hasValue())
             completionFn.getValue()(result);
-        }});
+        }}, QueueJobPriority::High);
         return;
       }
 
@@ -2284,7 +2494,12 @@ public:
     llvm::raw_svector_ostream commandOS(command);
     commandOS << basic::shellEscaped(executable);
     commandOS << " " << "--version";
+#if defined(_WIN32)
+    // FIXME:  cmd.exe uses different syntax for I/O redirection to null.
+    commandOS << " 2>NUL";
+#else
     commandOS << " " << "2>/dev/null";
+#endif
 
     // Read the result.
     FILE *fp = basic::sys::popen(commandOS.str().str().c_str(), "r");
@@ -2318,6 +2533,12 @@ class SwiftCompilerShellCommand : public ExternalCommand {
   /// The name of the module.
   std::string moduleName;
   
+  /// Module aliases used to build this module. For example, if
+  /// `-module-alias Foo=Bar` was passed, and source files in
+  /// this module references `Foo`, e.g.  `import Foo`, the `Bar`
+  /// module will loaded and used to compile this module.
+  std::vector<std::string> moduleAliases;
+
   /// The path of the output module.
   std::string moduleOutputPath;
 
@@ -2351,6 +2572,7 @@ class SwiftCompilerShellCommand : public ExternalCommand {
     return ExternalCommand::getSignature()
         .combine(executable)
         .combine(moduleName)
+        .combine(moduleAliases)
         .combine(moduleOutputPath)
         .combine(sourcesList)
         .combine(objectsList)
@@ -2371,7 +2593,13 @@ class SwiftCompilerShellCommand : public ExternalCommand {
     result.push_back(executable);
     result.push_back("-module-name");
     result.push_back(moduleName);
-    result.push_back("-incremental");
+
+    for (const auto& nameAndAlias: moduleAliases) {
+      // E.g. `-module-alias Foo=Bar`
+      result.push_back("-module-alias");
+      result.push_back(nameAndAlias);
+    }
+
     result.push_back("-emit-dependencies");
     if (!moduleOutputPath.empty()) {
       result.push_back("-emit-module");
@@ -2387,6 +2615,8 @@ class SwiftCompilerShellCommand : public ExternalCommand {
       result.push_back("-whole-module-optimization");
       result.push_back("-num-threads");
       result.push_back(numThreads);
+    } else {
+      result.push_back("-incremental");
     }
     result.push_back("-c");
     for (const auto& source: sourcesList) {
@@ -2507,17 +2737,13 @@ public:
       importPaths = std::vector<std::string>(values.begin(), values.end());
     } else if (name == "other-args") {
       otherArgs = std::vector<std::string>(values.begin(), values.end());
+    } else if (name == "module-aliases") {
+      moduleAliases = std::vector<std::string>(values.begin(), values.end());
     } else {
       return ExternalCommand::configureAttribute(ctx, name, values);
     }
     
     return true;
-  }
-
-  virtual bool configureAttribute(
-      const ConfigureContext& ctx, StringRef name,
-      ArrayRef<std::pair<StringRef, StringRef>> values) override {
-    return ExternalCommand::configureAttribute(ctx, name, values);
   }
 
   bool writeOutputFileMap(TaskInterface ti,
@@ -2637,7 +2863,7 @@ public:
     };
 
     DepsActions actions(ti, depsPath, this);
-    core::MakefileDepsParser(input->getBuffer(), actions).parse();
+    core::MakefileDepsParser(input->getBuffer(), actions, false).parse();
     return actions.numErrors == 0;
   }
 
@@ -2888,15 +3114,16 @@ public:
 };
 
 class MkdirTool : public Tool {
+
 public:
   using Tool::Tool;
 
   virtual bool configureAttribute(const ConfigureContext& ctx, StringRef name,
                                   StringRef value) override {
-    // No supported attributes.
     ctx.error("unexpected attribute: '" + name + "'");
     return false;
   }
+
   virtual bool configureAttribute(const ConfigureContext& ctx, StringRef name,
                                   ArrayRef<StringRef> values) override {
     // No supported attributes.
@@ -2912,16 +3139,14 @@ public:
   }
 
   virtual std::unique_ptr<Command> createCommand(StringRef name) override {
-    return llvm::make_unique<MkdirCommand>(name);
+    auto res = llvm::make_unique<MkdirCommand>(name);
+    return res;
   }
 };
 
 #pragma mark - SymlinkTool implementation
 
 class SymlinkCommand : public Command {
-  /// The declared output node.
-  BuildNode* output = nullptr;
-
   /// The path of the actual symbolic link to create, if different from the
   /// output node.
   std::string linkOutputPath;
@@ -2929,20 +3154,17 @@ class SymlinkCommand : public Command {
   /// The command description.
   std::string description;
 
-  /// Declared command inputs, used only for ordering purposes.
-  std::vector<BuildNode*> inputs;
-
   /// The contents to write at the output path.
   std::string contents;
 
   /// Get the destination path.
   StringRef getActualOutputPath() const {
-    return linkOutputPath.empty() ? output->getName() :
+    return linkOutputPath.empty() ? outputs[0]->getName() :
       StringRef(linkOutputPath);
   }
   
   virtual CommandSignature getSignature() const override {
-    CommandSignature code(output->getName());
+    CommandSignature code(outputs[0]->getName());
     code = code.combine(contents);
     for (const auto* input: inputs) {
       code = code.combine(input->getName());
@@ -2963,7 +3185,7 @@ class SymlinkCommand : public Command {
     llvm::raw_svector_ostream os(result);
     os << "ln -sfh ";
     StringRef outputPath = getActualOutputPath();
-    if (!output || !outputPath.empty()) {
+    if (outputs.empty() || !outputPath.empty()) {
       // FIXME: This isn't correct, we need utilities for doing shell quoting.
       if (outputPath.find(' ') != StringRef::npos) {
         os << '"' << outputPath << '"';
@@ -2993,7 +3215,7 @@ class SymlinkCommand : public Command {
   virtual void configureOutputs(const ConfigureContext& ctx,
                                 const std::vector<Node*>& value) override {
     if (value.size() == 1) {
-      output = static_cast<BuildNode*>(value[0]);
+      outputs.push_back(static_cast<BuildNode*>(value[0]));
     } else if (value.empty()) {
       ctx.error("missing declared output");
     } else {
@@ -3009,6 +3231,17 @@ class SymlinkCommand : public Command {
     } else if (name == "link-output-path") {
       linkOutputPath = value;
       return true;
+    } else if (name == "repair-via-ownership-analysis") {
+      if (value == "true") {
+        repairViaOwnershipAnalysis = true;
+        return true;
+      } else if (value == "false") {
+        repairViaOwnershipAnalysis = false;
+        return true;
+      } else {
+        ctx.error("invalid value for attribute: '" + name + "'");
+        return false;
+      }
     } else {
       ctx.error("unexpected attribute: '" + name + "'");
       return false;
@@ -3051,7 +3284,7 @@ class SymlinkCommand : public Command {
                              const BuildValue& value) override {
     // It is an error if this command isn't configured properly.
     StringRef outputPath = getActualOutputPath();
-    if (!output || outputPath.empty())
+    if (outputs.empty() || outputPath.empty())
       return false;
 
     // If the prior value wasn't for a successful command, recompute.
@@ -3099,7 +3332,7 @@ class SymlinkCommand : public Command {
                        ResultFn resultFn) override {
     // It is an error if this command isn't configured properly.
     StringRef outputPath = getActualOutputPath();
-    if (!output || outputPath.empty()) {
+    if (outputs.empty() || outputPath.empty()) {
       resultFn(BuildValue::makeFailedCommand());
       return;
     }
@@ -3150,15 +3383,29 @@ public:
 };
 
 class SymlinkTool : public Tool {
+  bool repairViaOwnershipAnalysis = false;
 public:
   using Tool::Tool;
 
   virtual bool configureAttribute(const ConfigureContext& ctx, StringRef name,
                                   StringRef value) override {
-    // No supported attributes.
-    ctx.error("unexpected attribute: '" + name + "'");
-    return false;
+    if (name == "repair-via-ownership-analysis") {
+      if (value == "true") {
+        repairViaOwnershipAnalysis = true;
+        return true;
+      } else if(value == "false") {
+        repairViaOwnershipAnalysis = false;
+        return true;
+      } else {
+        ctx.error("invalid value for attribute: '" + name + "'");
+        return false;
+      }
+    } else {
+      ctx.error("unexpected attribute: '" + name + "'");
+      return false;
+    }
   }
+
   virtual bool configureAttribute(const ConfigureContext& ctx, StringRef name,
                                   ArrayRef<StringRef> values) override {
     // No supported attributes.
@@ -3174,7 +3421,9 @@ public:
   }
 
   virtual std::unique_ptr<Command> createCommand(StringRef name) override {
-    return llvm::make_unique<SymlinkCommand>(name);
+    auto res = llvm::make_unique<SymlinkCommand>(name);
+    res->repairViaOwnershipAnalysis = repairViaOwnershipAnalysis;
+    return res;
   }
 };
 
@@ -3742,6 +3991,12 @@ void BuildSystemFileDelegate::error(StringRef filename,
   system.error(filename, atSystemToken, message);
 }
 
+void
+BuildSystemFileDelegate::cannotLoadDueToMultipleProducers(Node *output,
+                                                          std::vector<Command*> commands) {
+  getSystemDelegate().cannotBuildNodeDueToMultipleProducers(output, commands);
+}
+
 bool
 BuildSystemFileDelegate::configureClient(const ConfigureContext& ctx,
                                          StringRef name,
@@ -3761,7 +4016,9 @@ BuildSystemFileDelegate::configureClient(const ConfigureContext& ctx,
   for (auto prop : properties) {
     if (prop.first == "file-system") {
       if (prop.second == "device-agnostic") {
-        system.configureFileSystem(true);
+        system.configureFileSystem(1);
+      } else if (prop.second == "checksum-only") {
+        system.configureFileSystem(2);
       } else if (prop.second != "default") {
         ctx.error("unsupported client file-system: '" + prop.second + "'");
         return false;
@@ -3872,6 +4129,18 @@ bool BuildSystem::build(StringRef name) {
 void BuildSystem::cancel() {
   if (impl) {
     static_cast<BuildSystemImpl*>(impl)->cancel();
+  }
+}
+
+void BuildSystem::addCancellationDelegate(CancellationDelegate* del) {
+  if (impl) {
+    static_cast<BuildSystemImpl*>(impl)->addCancellationDelegate(del);
+  }
+}
+
+void BuildSystem::removeCancellationDelegate(CancellationDelegate* del) {
+  if (impl) {
+    static_cast<BuildSystemImpl*>(impl)->removeCancellationDelegate(del);
   }
 }
 

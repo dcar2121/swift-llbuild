@@ -1,20 +1,4 @@
 
-if(CMAKE_VERSION VERSION_LESS 3.16)
-  if(NOT CMAKE_SYSTEM_NAME STREQUAL Windows AND NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
-    set(CMAKE_SHARED_LIBRARY_SONAME_Swift_FLAG "-Xlinker -soname -Xlinker ")
-  endif()
-
-  if(NOT CMAKE_SYSTEM_NAME STREQUAL Windows)
-    set(CMAKE_SHARED_LIBRARY_RUNTIME_Swift_FLAG "-Xlinker -rpath -Xlinker ")
-    set(CMAKE_SHARED_LIBRARY_RUNTIME_Swift_FLAG_SEP ":")
-  endif()
-
-  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-    set(CMAKE_LINK_LIBRARY_FLAG "-l")
-    set(CMAKE_LINK_LIBRARY_SUFFIX "")
-  endif()
-endif()
-
 # Set x86_64 default if CMAKE_OSX_ARCHITECTURES is not set
 if(NOT DEFINED CMAKE_OSX_ARCHITECTURES OR CMAKE_OSX_ARCHITECTURES STREQUAL "")
   set(CMAKE_OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}")
@@ -65,13 +49,12 @@ else()
   if(NOT CMAKE_SYSTEM_NAME STREQUAL Windows)
     target_link_options(llbuildSwift PRIVATE "SHELL:-no-toolchain-stdlib-rpath")
     set_target_properties(llbuildSwift PROPERTIES
-      INSTALL_RPATH "$ORIGIN:$ORIGIN/../../$<LOWER_CASE:${CMAKE_SYSTEM_NAME}>")
+      INSTALL_RPATH "$ORIGIN/../../$<LOWER_CASE:${CMAKE_SYSTEM_NAME}>")
   endif()
 endif()
 set_target_properties(llbuildSwift PROPERTIES
   Swift_MODULE_NAME llbuildSwift
-  INTERFACE_LINK_LIBRARIES libllbuild
-  INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR})
+  INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR};${PROJECT_SOURCE_DIR}/products/libllbuild/include")
 
 install(TARGETS llbuildSwift
   ARCHIVE DESTINATION lib/swift/pm/llbuild COMPONENT libllbuildSwift
